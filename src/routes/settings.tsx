@@ -1,127 +1,246 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { PageHeader, SectionCard } from "@/components/crm/ui-bits";
-import { ALL_USERS } from "@/lib/auth";
-import { useTable } from "@/lib/crm-hooks";
-import { SERVICES } from "@/lib/crm-schema";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ErrorBlock, LoadingBlock, PageHeader, SectionCard } from "@/components/crm/ui-bits";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { useConfig } from "@/lib/api";
+import { supabase, unwrap } from "@/lib/supabase";
 
 export const Route = createFileRoute("/settings")({
-  head: () => ({
-    meta: [
-      { title: "Settings — BlezeX CRM" },
-      { name: "description", content: "Workspace users, services and data source configuration." },
-      { property: "og:title", content: "Settings — BlezeX CRM" },
-      {
-        property: "og:description",
-        content: "Workspace users, services and data source configuration.",
-      },
-    ],
-  }),
-  component: SettingsPage,
-});
-
-function SettingsPage() {
-  const settings = useTable("Settings");
-
-  return (
-    <AppShell adminOnly>
-      <PageHeader title="Settings" subtitle="Workspace configuration (admins only)" />
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Users and roles">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ALL_USERS.map((u) => (
-                <TableRow key={u.email}>
-                  <TableCell className="font-medium">{u.name}</TableCell>
-                  <TableCell className="text-xs">{u.email}</TableCell>
-                  <TableCell>
-                    <span
-                      className={
-                        u.role === "Admin"
-                          ? "inline-flex rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
-                          : "inline-flex rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
-                      }
-                    >
-                      {u.role}
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Accounts are fixed. There is no signup, registration or password recovery.
-          </p>
-        </SectionCard>
-
-        <SectionCard title="Data source">
-          <p className="text-sm">
-            All records are stored in the shared <strong>BlezeX CRM Data</strong> spreadsheet with
-            tabs for Leads, Clients, Activities, Tasks and Settings. Everyone sees the same data and
-            updates refresh automatically.
-          </p>
-          <div className="mt-3 space-y-1 text-sm">
-            {(settings.data ?? []).map((r) => (
-              <div key={r.__row} className="flex justify-between border-b border-border/60 py-1.5">
-                <span className="text-muted-foreground">{r["Key"]}</span>
-                <span className="font-medium">{r["Value"]}</span>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Service catalogue" className="lg:col-span-2">
-          <div className="flex flex-wrap gap-2">
-            {SERVICES.map((s) => (
-              <span
-                key={s}
-                className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium"
-              >
-                {s}
-              </span>
-            ))}
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Permissions" className="lg:col-span-2">
-          <div className="grid gap-4 sm:grid-cols-2 text-sm">
-            <div>
-              <p className="mb-1 font-semibold">Admin</p>
-              <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
-                <li>View, create, edit and delete all records</li>
-                <li>Assign leads and tasks</li>
-                <li>Access reports, analytics and settings</li>
-                <li>View team performance</li>
-              </ul>
-            </div>
-            <div>
-              <p className="mb-1 font-semibold">Team Member</p>
-              <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
-                <li>Create leads and log activities</li>
-                <li>Update assigned leads and lead status</li>
-                <li>Complete assigned tasks</li>
-                <li>No deletes, reports, analytics or settings</li>
-              </ul>
-            </div>
-          </div>
-        </SectionCard>
-      </div>
+  head: () => ({ meta: [{ title: "Settings — BlezeX Connect" }] }),
+  component: () => (
+    <AppShell>
+      <Page />
     </AppShell>
+  ),
+});
+type Table = "lead_sources" | "services" | "lost_reasons";
+
+function Vocabulary({
+  title,
+  table,
+  rows,
+  col,
+}: {
+  title: string;
+  table: Table;
+  rows: { id: string; name?: string; label?: string; is_active: boolean }[];
+  col: "name" | "label";
+}) {
+  const qc = useQueryClient();
+  const [text, setText] = useState("");
+  const done = () => {
+    void qc.invalidateQueries({ queryKey: ["config"] });
+  };
+  const err = (e: Error) => toast.error(e.message);
+  const add = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await supabase.from(table).insert({ [col]: text.trim(), position: rows.length * 10 + 10 }),
+      ),
+    onSuccess: () => {
+      setText("");
+      done();
+    },
+    onError: err,
+  });
+  const toggle = useMutation({
+    mutationFn: async (r: { id: string; on: boolean }) =>
+      unwrap(await supabase.from(table).update({ is_active: r.on }).eq("id", r.id)),
+    onSuccess: done,
+    onError: err,
+  });
+  return (
+    <SectionCard title={title}>
+      <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
+        {rows.map((r) => (
+          <li key={r.id} className="flex items-center justify-between">
+            <span className={r.is_active ? "" : "text-muted-foreground line-through"}>
+              {r[col]}
+            </span>
+            <Switch
+              checked={r.is_active}
+              onCheckedChange={(on) => toggle.mutate({ id: r.id, on })}
+              aria-label={`Active: ${r[col]}`}
+            />
+          </li>
+        ))}
+      </ul>
+      <form
+        className="mt-3 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (text.trim()) add.mutate();
+        }}
+      >
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add new…"
+          aria-label={`Add to ${title}`}
+        />
+        <Button type="submit" size="sm" disabled={add.isPending}>
+          Add
+        </Button>
+      </form>
+    </SectionCard>
+  );
+}
+
+function Page() {
+  const q = useConfig();
+  const qc = useQueryClient();
+  const [stageName, setStageName] = useState("");
+  const err = (e: Error) => toast.error(e.message);
+  const refresh = () => void qc.invalidateQueries({ queryKey: ["config"] });
+  const addStage = useMutation({
+    mutationFn: async () => {
+      const label = stageName.trim();
+      const max = Math.max(
+        0,
+        ...(q.data?.stages ?? []).filter((s) => !s.is_won && !s.is_lost).map((s) => s.position),
+      );
+      return unwrap(
+        await supabase.from("pipeline_stages").insert({
+          key:
+            label
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "") || "stage",
+          label,
+          position: max + 5,
+        }),
+      );
+    },
+    onSuccess: () => {
+      setStageName("");
+      refresh();
+    },
+    onError: err,
+  });
+  const toggleStage = useMutation({
+    mutationFn: async (a: { key: string; on: boolean }) =>
+      unwrap(await supabase.from("pipeline_stages").update({ is_active: a.on }).eq("key", a.key)),
+    onSuccess: refresh,
+    onError: err,
+  });
+  const saveSetting = useMutation({
+    mutationFn: async (a: { key: string; value: unknown }) =>
+      unwrap(
+        await supabase
+          .from("app_settings")
+          .update({ value: a.value as never })
+          .eq("key", a.key),
+      ),
+    onSuccess: () => {
+      refresh();
+      toast.success("Setting saved");
+    },
+    onError: err,
+  });
+  if (q.isLoading) return <LoadingBlock rows={6} />;
+  if (q.isError || !q.data) return <ErrorBlock error={q.error} onRetry={() => q.refetch()} />;
+  const c = q.data;
+  return (
+    <>
+      <PageHeader
+        title="Settings"
+        subtitle="Pipeline, vocabularies and operating rules (admin only)"
+      />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SectionCard title="Pipeline stages">
+          <ul className="space-y-1 text-sm">
+            {c.stages.map((s) => (
+              <li key={s.key} className="flex items-center justify-between">
+                <span>
+                  {s.label}
+                  {s.is_won ? " (won)" : s.is_lost ? " (lost)" : ""}
+                </span>
+                {s.is_won || s.is_lost ? (
+                  <span className="text-xs text-muted-foreground">fixed</span>
+                ) : (
+                  <Switch
+                    checked={s.is_active}
+                    onCheckedChange={(on) => toggleStage.mutate({ key: s.key, on })}
+                    aria-label={`Active: ${s.label}`}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+          <form
+            className="mt-3 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (stageName.trim()) addStage.mutate();
+            }}
+          >
+            <Input
+              value={stageName}
+              onChange={(e) => setStageName(e.target.value)}
+              placeholder="New stage name"
+              aria-label="New stage"
+            />
+            <Button type="submit" size="sm">
+              Add
+            </Button>
+          </form>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Stages in use cannot be deleted; deactivate them instead.
+          </p>
+        </SectionCard>
+        <SectionCard title="Operating rules">
+          <div className="space-y-3 text-sm">
+            <label className="flex items-center justify-between">
+              Mentors may reassign leads within their team
+              <Switch
+                checked={c.settings["mentor.can_assign_leads"] === true}
+                onCheckedChange={(on) =>
+                  saveSetting.mutate({ key: "mentor.can_assign_leads", value: on })
+                }
+              />
+            </label>
+            {(
+              [
+                ["proposal.followup_hours", "Proposal follow-up target (hours)"],
+                ["lead.stale_days", "Stale lead after (days)"],
+                ["qualification.min_score", "Min. qualification score (0–100)"],
+              ] as const
+            ).map(([k, l]) => (
+              <form
+                key={k}
+                className="flex items-center justify-between gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const v = Number(new FormData(e.currentTarget).get("v"));
+                  if (Number.isFinite(v) && v > 0) saveSetting.mutate({ key: k, value: v });
+                }}
+              >
+                <span>{l}</span>
+                <span className="flex gap-1">
+                  <Input
+                    name="v"
+                    type="number"
+                    defaultValue={Number(c.settings[k] ?? 0)}
+                    className="h-8 w-20"
+                    aria-label={l}
+                  />
+                  <Button size="sm" variant="outline" type="submit">
+                    Save
+                  </Button>
+                </span>
+              </form>
+            ))}
+          </div>
+        </SectionCard>
+        <Vocabulary title="Lead sources" table="lead_sources" rows={c.sources} col="name" />
+        <Vocabulary title="Services catalogue" table="services" rows={c.services} col="name" />
+        <Vocabulary title="Lost reasons" table="lost_reasons" rows={c.lostReasons} col="label" />
+      </div>
+    </>
   );
 }

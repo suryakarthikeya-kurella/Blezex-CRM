@@ -1,17 +1,21 @@
-import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, Download, Pencil, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Download, MessageSquare, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { EmptyState, KpiCard, PageHeader, PriorityPill, StatusPill } from "@/components/crm/ui-bits";
-import { RecordDialog, type FieldDef } from "@/components/crm/record-dialog";
-import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  EmptyState,
+  ErrorBlock,
+  KpiCard,
+  LoadingBlock,
+  PageHeader,
+  PriorityPill,
+  StatusPill,
+} from "@/components/crm/ui-bits";
+import { SelectBox, useUserName, userOptions } from "@/components/crm/controls";
+import { RecordDialog } from "@/components/crm/record-dialog";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -20,290 +24,288 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ALL_USERS, useAuth } from "@/lib/auth";
-import { exportCsv, nextId, nowStamp, today, useCrmMutations, useTable } from "@/lib/crm-hooks";
-import { PRIORITIES, SHEET_COLUMNS, TASK_STATUSES, type SheetRow } from "@/lib/crm-schema";
-import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
+import {
+  useAddComment,
+  useCreateTask,
+  useDirectory,
+  useTaskComments,
+  useTasks,
+  useUpdateTask,
+} from "@/lib/api";
+import { date, dateTime, downloadCsv, isOverdue } from "@/lib/format";
+import type { Task } from "@/lib/db-types";
 
 export const Route = createFileRoute("/tasks")({
-  head: () => ({
-    meta: [
-      { title: "Tasks — BlezeX CRM" },
-      { name: "description", content: "Assign, track and complete BlezeX sales and delivery tasks." },
-      { property: "og:title", content: "Tasks — BlezeX CRM" },
-      {
-        property: "og:description",
-        content: "Assign, track and complete BlezeX sales and delivery tasks.",
-      },
-    ],
-  }),
-  component: TasksPage,
+  head: () => ({ meta: [{ title: "Tasks — BlezeX Connect" }] }),
+  component: () => (
+    <AppShell>
+      <Page />
+    </AppShell>
+  ),
 });
 
-function TasksPage() {
-  const { user, isAdmin } = useAuth();
-  const { data, isLoading } = useTable("Tasks");
-  const { createMutation, updateMutation, deleteMutation } = useCrmMutations("Tasks");
-
-  const [scope, setScope] = useState<"mine" | "all">(isAdmin ? "all" : "mine");
-  const [status, setStatus] = useState("all");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<SheetRow | null>(null);
-
-  const day = today();
-
-  const FIELDS: FieldDef[] = [
-    { name: "Task Title", required: true, full: true },
-    { name: "Description", type: "textarea" },
-    {
-      name: "Assigned To",
-      type: "select",
-      options: ALL_USERS.map((u) => u.email),
-      disabled: !isAdmin,
-    },
-    { name: "Priority", type: "select", options: PRIORITIES },
-    { name: "Due Date", type: "date" },
-    { name: "Status", type: "select", options: TASK_STATUSES },
-  ];
-
-  const rows = useMemo(() => {
-    let list = data ?? [];
-    if (scope === "mine") list = list.filter((t) => t["Assigned To"] === user?.email);
-    if (status !== "all") list = list.filter((t) => t["Status"] === status);
-    return [...list].sort((a, b) => String(a["Due Date"]).localeCompare(String(b["Due Date"])));
-  }, [data, scope, status, user]);
-
-  const stats = useMemo(() => {
-    const list = data ?? [];
-    const open = list.filter((t) => t["Status"] !== "Completed");
-    return {
-      total: list.length,
-      open: open.length,
-      overdue: open.filter((t) => t["Due Date"] && t["Due Date"] < day).length,
-      completed: list.filter((t) => t["Status"] === "Completed").length,
-    };
-  }, [data, day]);
-
-  const canEdit = (t: SheetRow) => isAdmin || t["Assigned To"] === user?.email;
-
-  const submit = (values: Record<string, string>) => {
-    const stamp = nowStamp();
-    if (editing) {
-      updateMutation.mutate({
-        row: editing.__row,
-        record: {
-          ...editing,
-          ...values,
-          "Task ID": editing["Task ID"],
-          "Created By": editing["Created By"],
-          "Created Date": editing["Created Date"],
-          "Last Updated By": user!.email,
-          "Last Updated Date": stamp,
-        },
-      });
-    } else {
-      createMutation.mutate({
-        ...values,
-        "Task ID": nextId(data, "Task ID", "TK"),
-        Status: values["Status"] || "To Do",
-        "Assigned To": values["Assigned To"] || user!.email,
-        "Created By": user!.email,
-        "Created Date": stamp,
-        "Last Updated By": user!.email,
-        "Last Updated Date": stamp,
-      });
-    }
-    setDialogOpen(false);
-  };
-
-  const setStatusFor = (t: SheetRow, value: string) =>
-    updateMutation.mutate({
-      row: t.__row,
-      record: {
-        ...t,
-        Status: value,
-        "Last Updated By": user!.email,
-        "Last Updated Date": nowStamp(),
-      },
-    });
-
+function Page() {
+  const { profile, role } = useAuth();
+  const { data: dir } = useDirectory();
+  const userName = useUserName();
+  const [scope, setScope] = useState<"mine" | "all">(role === "bds_employee" ? "mine" : "all");
+  const [status, setStatus] = useState("open");
+  const [open, setOpen] = useState(false);
+  const [rid, setRid] = useState(() => crypto.randomUUID());
+  const [commentsFor, setCommentsFor] = useState<Task | null>(null);
+  const q = useTasks({ scope, status, userId: profile?.id ?? "" });
+  const create = useCreateTask();
+  const update = useUpdateTask();
+  const rows = q.data ?? [];
+  const overdue = rows.filter(
+    (t) => ["todo", "in_progress"].includes(t.status) && isOverdue(t.due_at),
+  ).length;
+  const today = rows.filter(
+    (t) =>
+      ["todo", "in_progress"].includes(t.status) &&
+      t.due_at &&
+      new Date(t.due_at).toDateString() === new Date().toDateString(),
+  ).length;
   return (
-    <AppShell>
+    <>
       <PageHeader
         title="Tasks"
-        subtitle="Internal work assignments"
+        subtitle="Assign, track and complete work"
         actions={
           <>
             <Button
               variant="outline"
-              onClick={() => exportCsv("blezex-tasks.csv", SHEET_COLUMNS.Tasks, rows)}
+              size="sm"
+              disabled={!rows.length}
+              onClick={() =>
+                downloadCsv(
+                  "tasks.csv",
+                  ["title", "status", "priority", "assignee", "due"],
+                  rows.map((t) => ({
+                    title: t.title,
+                    status: t.status,
+                    priority: t.priority,
+                    assignee: userName(t.assigned_to),
+                    due: t.due_at,
+                  })),
+                )
+              }
             >
-              <Download className="size-4" /> Export CSV
+              <Download className="size-4" /> Export
             </Button>
-            <Button
-              onClick={() => {
-                setEditing(null);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="size-4" /> Create Task
+            <Button size="sm" onClick={() => setOpen(true)}>
+              <Plus className="size-4" /> New task
             </Button>
           </>
         }
       />
-
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="All tasks" value={stats.total} />
-        <KpiCard label="Open" value={stats.open} tone="primary" />
-        <KpiCard label="Overdue" value={stats.overdue} tone="danger" />
-        <KpiCard label="Completed" value={stats.completed} tone="success" />
+      <div className="mb-3 grid gap-3 sm:grid-cols-3">
+        <KpiCard label="Shown" value={rows.length} />
+        <KpiCard label="Due today" value={today} />
+        <KpiCard label="Overdue" value={overdue} tone={overdue ? "danger" : "default"} />
       </div>
-
-      <div className="surface mb-4 flex flex-wrap items-center gap-2 p-3">
-        <Select value={scope} onValueChange={(v) => setScope(v as "mine" | "all")}>
-          <SelectTrigger className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="mine">My tasks</SelectItem>
-            <SelectItem value="all">All tasks</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {TASK_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="surface mb-3 flex flex-wrap gap-2 p-3">
+        {role !== "bds_employee" ? (
+          <SelectBox
+            value={scope}
+            onChange={(v) => setScope(v === "mine" ? "mine" : "all")}
+            options={[
+              { value: "mine", label: "My tasks" },
+              { value: "all", label: role === "admin" ? "All tasks" : "Team tasks" },
+            ]}
+            className="w-40"
+          />
+        ) : null}
+        <SelectBox
+          value={status}
+          onChange={setStatus}
+          options={[
+            { value: "open", label: "Open" },
+            { value: "todo", label: "To do" },
+            { value: "in_progress", label: "In progress" },
+            { value: "completed", label: "Completed" },
+          ]}
+          allLabel="All statuses"
+          className="w-40"
+        />
       </div>
-
-      <div className="surface overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Task</TableHead>
-              <TableHead>Assigned to</TableHead>
-              <TableHead>Priority</TableHead>
-              <TableHead>Due</TableHead>
-              <TableHead className="min-w-40">Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
+      {q.isLoading ? (
+        <LoadingBlock />
+      ) : q.isError ? (
+        <ErrorBlock error={q.error} onRetry={() => q.refetch()} />
+      ) : rows.length === 0 ? (
+        <EmptyState message="No tasks here. 🎉" />
+      ) : (
+        <div className="surface overflow-x-auto">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6}>
-                  <EmptyState message="Loading tasks…" />
-                </TableCell>
+                <TableHead>Task</TableHead>
+                <TableHead>Lead</TableHead>
+                <TableHead>Assignee</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Due</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead />
               </TableRow>
-            ) : rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6}>
-                  <EmptyState message="No tasks here." />
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((t) => {
-                const overdue = t["Due Date"] && t["Due Date"] < day && t["Status"] !== "Completed";
-                return (
-                  <TableRow key={t.__row}>
-                    <TableCell>
-                      <p className="font-medium">{t["Task Title"]}</p>
-                      <p className="max-w-80 truncate text-xs text-muted-foreground">
-                        {t["Description"]}
-                      </p>
-                    </TableCell>
-                    <TableCell className="text-xs">{t["Assigned To"]}</TableCell>
-                    <TableCell>
-                      <PriorityPill value={t["Priority"]} />
-                    </TableCell>
-                    <TableCell
-                      className={cn("text-xs", overdue && "font-semibold text-destructive")}
+            </TableHeader>
+            <TableBody>
+              {rows.map((t) => (
+                <TableRow key={t.id}>
+                  <TableCell
+                    className={t.status === "completed" ? "line-through opacity-60" : "font-medium"}
+                  >
+                    {t.title}
+                  </TableCell>
+                  <TableCell>
+                    {t.lead_id ? (
+                      <Link
+                        to="/leads/$leadId"
+                        params={{ leadId: t.lead_id }}
+                        className="text-xs hover:underline"
+                      >
+                        {t.lead?.company_name ?? "Lead"}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs">{userName(t.assigned_to)}</TableCell>
+                  <TableCell>
+                    <PriorityPill value={t.priority} />
+                  </TableCell>
+                  <TableCell
+                    className={
+                      isOverdue(t.due_at) && t.status !== "completed"
+                        ? "text-xs font-medium text-destructive"
+                        : "text-xs"
+                    }
+                  >
+                    {date(t.due_at)}
+                  </TableCell>
+                  <TableCell>
+                    <SelectBox
+                      value={t.status}
+                      onChange={(v) =>
+                        update.mutate({ id: t.id, patch: { status: v as Task["status"] } })
+                      }
+                      options={[
+                        { value: "todo", label: "To do" },
+                        { value: "in_progress", label: "In progress" },
+                        { value: "completed", label: "Completed" },
+                        { value: "cancelled", label: "Cancelled" },
+                      ]}
+                      className="h-8 w-36 text-xs"
+                      ariaLabel={`Status of ${t.title}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Comments"
+                      onClick={() => setCommentsFor(t)}
                     >
-                      {t["Due Date"] || "—"}
-                      {overdue ? " · overdue" : ""}
-                    </TableCell>
-                    <TableCell>
-                      {canEdit(t) ? (
-                        <Select
-                          value={t["Status"] || "To Do"}
-                          onValueChange={(v) => setStatusFor(t, v)}
-                        >
-                          <SelectTrigger className="h-8 w-36 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TASK_STATUSES.map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {s}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <StatusPill value={t["Status"]} />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        {canEdit(t) && t["Status"] !== "Completed" ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Mark complete"
-                            onClick={() => setStatusFor(t, "Completed")}
-                          >
-                            <CheckCircle2 className="size-4 text-success" />
-                          </Button>
-                        ) : null}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={!canEdit(t)}
-                          onClick={() => {
-                            setEditing(t);
-                            setDialogOpen(true);
-                          }}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        {isAdmin ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteMutation.mutate(t.__row)}
-                          >
-                            <Trash2 className="size-4 text-destructive" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
+                      <MessageSquare className="size-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
       <RecordDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        title={editing ? "Edit task" : "Create task"}
-        fields={FIELDS}
-        initial={
-          editing ?? { Status: "To Do", Priority: "Medium", "Assigned To": user!.email, "Due Date": day }
+        open={open}
+        onOpenChange={setOpen}
+        title="New task"
+        submitting={create.isPending}
+        initial={{ priority: "medium", assigned_to: profile?.id ?? "" }}
+        fields={[
+          { name: "title", required: true, full: true },
+          { name: "description", type: "textarea" },
+          { name: "priority", type: "select", options: ["low", "medium", "high"] },
+          { name: "due_at", label: "Due date", type: "date" },
+          {
+            name: "assigned_to",
+            label: "Assign to",
+            type: "select",
+            options: userOptions(dir?.list),
+            disabled: role === "bds_employee",
+          },
+        ]}
+        onSubmit={(v) =>
+          create.mutate(
+            {
+              request_id: rid,
+              title: v["title"] ?? "",
+              description: v["description"] ?? "",
+              priority: v["priority"] || "medium",
+              assigned_to: v["assigned_to"] || profile!.id,
+              due_at: v["due_at"] ? new Date(`${v["due_at"]}T17:00:00`).toISOString() : null,
+            },
+            {
+              onSuccess: () => {
+                setOpen(false);
+                setRid(crypto.randomUUID());
+              },
+            },
+          )
         }
-        submitting={createMutation.isPending || updateMutation.isPending}
-        onSubmit={submit}
       />
-    </AppShell>
+      <Comments task={commentsFor} onClose={() => setCommentsFor(null)} />
+    </>
+  );
+}
+
+function Comments({ task, onClose }: { task: Task | null; onClose: () => void }) {
+  const { profile } = useAuth();
+  const userName = useUserName();
+  const q = useTaskComments(task?.id ?? null);
+  const add = useAddComment();
+  const [text, setText] = useState("");
+  return (
+    <Dialog open={!!task} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{task?.title}</DialogTitle>
+        </DialogHeader>
+        <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+          {(q.data ?? []).length === 0 ? (
+            <li className="text-muted-foreground">No comments yet.</li>
+          ) : (
+            (q.data ?? []).map((c) => (
+              <li key={c.id}>
+                <span className="font-medium">{userName(c.author_id)}</span>{" "}
+                <span className="text-[11px] text-muted-foreground">{dateTime(c.created_at)}</span>
+                <p>{c.content}</p>
+              </li>
+            ))
+          )}
+        </ul>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (task && text.trim())
+              add.mutate(
+                { task_id: task.id, author_id: profile!.id, content: text.trim() },
+                { onSuccess: () => setText("") },
+              );
+          }}
+        >
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Add a comment"
+            aria-label="Comment"
+          />
+          <Button type="submit" disabled={add.isPending || !text.trim()}>
+            Post
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

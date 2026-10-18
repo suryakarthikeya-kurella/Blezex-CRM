@@ -1,0 +1,2 @@
+{ "profiles": [{"id":"u1","email":"emp1@blezex.test","full_name":"Eve"},{"id":"u2","email":"emp2@blezex.test","full_name":"Eli"}],
+  "sources": [{"id":"s1","name":"Referral"},{"id":"s2","name":"Cold Call"}], "services": [{"id":"v1","name":"SEO"}], "lostReasons": [{"id":"r1","label":"Other"}] }

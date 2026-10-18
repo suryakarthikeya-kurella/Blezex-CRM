@@ -1,23 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Download } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { EmptyState, KpiCard, PageHeader, SectionCard } from "@/components/crm/ui-bits";
-import { ALL_USERS } from "@/lib/auth";
-import { currency, num, useTable } from "@/lib/crm-hooks";
+import { EmptyState, ErrorBlock, LoadingBlock, PageHeader } from "@/components/crm/ui-bits";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -26,295 +14,177 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuth } from "@/lib/auth";
+import { useReport } from "@/lib/api";
+import { downloadCsv, label, money } from "@/lib/format";
 
 export const Route = createFileRoute("/reports")({
-  head: () => ({
-    meta: [
-      { title: "Reports — BlezeX CRM" },
-      { name: "description", content: "Team performance, revenue and lead source analytics." },
-      { property: "og:title", content: "Reports — BlezeX CRM" },
-      {
-        property: "og:description",
-        content: "Team performance, revenue and lead source analytics.",
-      },
-    ],
-  }),
-  component: ReportsPage,
+  head: () => ({ meta: [{ title: "Reports — BlezeX Connect" }] }),
+  component: () => (
+    <AppShell>
+      <Page />
+    </AppShell>
+  ),
 });
 
-const COLORS = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
-];
+type Row = Record<string, string | number | null>;
+const MONEY = new Set([
+  "won_value",
+  "lost_value",
+  "open_pipeline_value",
+  "invoiced",
+  "collected",
+  "outstanding",
+  "overdue",
+]);
 
-function ReportsPage() {
-  const leads = useTable("Leads");
-  const clients = useTable("Clients");
-  const activities = useTable("Activities");
-  const tasks = useTable("Tasks");
-
-  const L = leads.data ?? [];
-  const C = clients.data ?? [];
-  const A = activities.data ?? [];
-  const T = tasks.data ?? [];
-
-  const team = useMemo(
-    () =>
-      ALL_USERS.map((u) => {
-        const own = L.filter((l) => l["Assigned To"] === u.email);
-        const conv = own.filter((l) => l["Status"] === "Converted Client");
-        const myTasks = T.filter((t) => t["Assigned To"] === u.email);
-        return {
-          name: u.name,
-          email: u.email,
-          role: u.role,
-          leads: own.length,
-          activities: A.filter((a) => a["Owner"] === u.email).length,
-          tasksCompleted: myTasks.filter((t) => t["Status"] === "Completed").length,
-          tasksTotal: myTasks.length,
-          conversions: conv.length,
-          conversionRate: own.length ? Math.round((conv.length / own.length) * 100) : 0,
-          revenue: C.filter((c) => c["Account Manager"] === u.email).reduce(
-            (s, c) => s + num(c["Amount Paid"]),
-            0,
-          ),
-        };
-      }),
-    [L, A, T, C],
-  );
-
-  const sourcePerf = useMemo(() => {
-    const map = new Map<string, { name: string; leads: number; converted: number; value: number }>();
-    L.forEach((l) => {
-      const k = l["Lead Source"] || "Unknown";
-      const e = map.get(k) ?? { name: k, leads: 0, converted: 0, value: 0 };
-      e.leads += 1;
-      if (l["Status"] === "Converted Client") e.converted += 1;
-      e.value += num(l["Expected Deal Value"]);
-      map.set(k, e);
-    });
-    return [...map.values()].sort((a, b) => b.leads - a.leads);
-  }, [L]);
-
-  const growth = useMemo(() => {
-    const map = new Map<string, { month: string; leads: number; conversions: number; revenue: number }>();
-    const touch = (k: string) => {
-      if (!k) return null;
-      const e = map.get(k) ?? { month: k, leads: 0, conversions: 0, revenue: 0 };
-      map.set(k, e);
-      return e;
-    };
-    L.forEach((l) => {
-      const e = touch(String(l["Created Date"] ?? "").slice(0, 7));
-      if (e) e.leads += 1;
-      if (l["Status"] === "Converted Client") {
-        const e2 = touch(String(l["Last Updated Date"] ?? l["Created Date"] ?? "").slice(0, 7));
-        if (e2) e2.conversions += 1;
-      }
-    });
-    C.forEach((c) => {
-      const e = touch(String(c["Start Date"] ?? c["Created Date"] ?? "").slice(0, 7));
-      if (e) e.revenue += num(c["Amount Paid"]);
-    });
-    return [...map.values()].sort((a, b) => a.month.localeCompare(b.month));
-  }, [L, C]);
-
-  const lost = useMemo(() => {
-    const map = new Map<string, number>();
-    L.filter((l) => l["Status"] === "Lost").forEach((l) => {
-      const k = l["Lead Source"] || "Unknown";
-      map.set(k, (map.get(k) ?? 0) + 1);
-    });
-    return [...map].map(([name, value]) => ({ name, value }));
-  }, [L]);
-
-  const totalRevenue = C.reduce((s, c) => s + num(c["Amount Paid"]), 0);
-  const contracted = C.reduce((s, c) => s + num(c["Project Value"]), 0);
-  const converted = L.filter((l) => l["Status"] === "Converted Client").length;
-
+function ReportTable({
+  name,
+  args,
+  enabled = true,
+}: {
+  name: string;
+  args: Record<string, unknown>;
+  enabled?: boolean;
+}) {
+  const q = useReport<Row>(name, args, enabled);
+  const rows = useMemo(() => (q.data ?? []).map((r) => (Array.isArray(r) ? r : r)), [q.data]);
+  if (q.isLoading) return <LoadingBlock />;
+  if (q.isError) return <ErrorBlock error={q.error} onRetry={() => q.refetch()} />;
+  if (rows.length === 0) return <EmptyState message="No data for this period." />;
+  const cols = Object.keys(rows[0]!).filter((c) => !c.endsWith("_id") && c !== "role");
   return (
-    <AppShell adminOnly>
-      <PageHeader title="Reports" subtitle="Analytics and team performance (admins only)" />
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Leads created" value={L.length} tone="primary" />
-        <KpiCard
-          label="Overall conversion"
-          value={`${L.length ? Math.round((converted / L.length) * 100) : 0}%`}
-          tone="success"
-        />
-        <KpiCard label="Contracted value" value={currency(contracted)} />
-        <KpiCard label="Revenue collected" value={currency(totalRevenue)} tone="success" />
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Leads and conversions by team member">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={team}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="leads" name="Leads" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
-              <Bar
-                dataKey="conversions"
-                name="Conversions"
-                fill="var(--color-chart-2)"
-                radius={[6, 6, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </SectionCard>
-
-        <SectionCard title="Activities and completed tasks by team member">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={team}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar
-                dataKey="activities"
-                name="Activities"
-                fill="var(--color-chart-3)"
-                radius={[6, 6, 0, 0]}
-              />
-              <Bar
-                dataKey="tasksCompleted"
-                name="Tasks completed"
-                fill="var(--color-chart-5)"
-                radius={[6, 6, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </SectionCard>
-
-        <SectionCard title="Monthly growth">
-          {growth.length === 0 ? (
-            <EmptyState message="Not enough data yet." />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={growth}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="leads"
-                  name="Leads"
-                  stroke="var(--color-chart-1)"
-                  strokeWidth={2.5}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="conversions"
-                  name="Conversions"
-                  stroke="var(--color-chart-2)"
-                  strokeWidth={2.5}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </SectionCard>
-
-        <SectionCard title="Lost leads analysis">
-          {lost.length === 0 ? (
-            <EmptyState message="No lost leads recorded." />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie data={lost} dataKey="value" nameKey="name" outerRadius={85} label>
-                  {lost.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </SectionCard>
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Team performance summary">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Member</TableHead>
-                  <TableHead className="text-right">Leads</TableHead>
-                  <TableHead className="text-right">Activities</TableHead>
-                  <TableHead className="text-right">Tasks</TableHead>
-                  <TableHead className="text-right">Conv.</TableHead>
-                  <TableHead className="text-right">Rate</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {team.map((t) => (
-                  <TableRow key={t.email}>
-                    <TableCell>
-                      <p className="font-medium">{t.name}</p>
-                      <p className="text-xs text-muted-foreground">{t.role}</p>
-                    </TableCell>
-                    <TableCell className="text-right">{t.leads}</TableCell>
-                    <TableCell className="text-right">{t.activities}</TableCell>
-                    <TableCell className="text-right">
-                      {t.tasksCompleted}/{t.tasksTotal}
-                    </TableCell>
-                    <TableCell className="text-right">{t.conversions}</TableCell>
-                    <TableCell className="text-right">{t.conversionRate}%</TableCell>
-                    <TableCell className="text-right">{currency(t.revenue)}</TableCell>
-                  </TableRow>
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="mb-2"
+        onClick={() => downloadCsv(`${name}.csv`, cols, rows)}
+      >
+        <Download className="size-4" /> CSV
+      </Button>
+      <div className="surface overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {cols.map((c) => (
+                <TableHead key={c} className={typeof rows[0]![c] === "number" ? "text-right" : ""}>
+                  {label(c)}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r, i) => (
+              <TableRow key={i}>
+                {cols.map((c) => (
+                  <TableCell key={c} className={typeof r[c] === "number" ? "text-right" : ""}>
+                    {MONEY.has(c) ? money(r[c]) : (r[c] ?? "—")}
+                  </TableCell>
                 ))}
-              </TableBody>
-            </Table>
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Lead source performance">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Source</TableHead>
-                  <TableHead className="text-right">Leads</TableHead>
-                  <TableHead className="text-right">Converted</TableHead>
-                  <TableHead className="text-right">Rate</TableHead>
-                  <TableHead className="text-right">Pipeline</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sourcePerf.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5}>
-                      <EmptyState message="No leads yet." />
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  sourcePerf.map((s) => (
-                    <TableRow key={s.name}>
-                      <TableCell className="font-medium">{s.name}</TableCell>
-                      <TableCell className="text-right">{s.leads}</TableCell>
-                      <TableCell className="text-right">{s.converted}</TableCell>
-                      <TableCell className="text-right">
-                        {s.leads ? Math.round((s.converted / s.leads) * 100) : 0}%
-                      </TableCell>
-                      <TableCell className="text-right">{currency(s.value)}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </SectionCard>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
-    </AppShell>
+    </>
+  );
+}
+
+function Revenue({ from, to }: { from: string; to: string }) {
+  const q = useReport<Row>("report_revenue", { p_from: from, p_to: to });
+  if (q.isLoading) return <LoadingBlock rows={2} />;
+  if (q.isError) return <ErrorBlock error={q.error} />;
+  const r = (q.data as unknown as Row) ?? {};
+  const items: [string, string][] = [
+    ["invoiced", "Invoiced (issued invoices)"],
+    ["collected", "Cash collected (payments − refunds)"],
+    ["outstanding", "Outstanding balance"],
+    ["overdue", "Overdue balance"],
+    ["won_value", "Won deal value (agreed, not cash)"],
+  ];
+  return (
+    <dl className="grid gap-3 sm:grid-cols-3">
+      {items.map(([k, l]) => (
+        <div key={k} className="surface p-4">
+          <dt className="text-xs text-muted-foreground">{l}</dt>
+          <dd className="font-display text-xl font-semibold">{money(r[k])}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function Page() {
+  const { role } = useAuth();
+  const [from, setFrom] = useState(() =>
+    new Date(Date.now() - 30 * 864e5).toLocaleDateString("en-CA"),
+  );
+  const [to, setTo] = useState(() => new Date().toLocaleDateString("en-CA"));
+  const a = {
+    p_from: new Date(from).toISOString(),
+    p_to: new Date(new Date(to).getTime() + 864e5).toISOString(),
+  };
+  const d = { p_from: from, p_to: to };
+  return (
+    <>
+      <PageHeader
+        title="Reports"
+        subtitle="Scoped to the data you're allowed to see"
+        actions={
+          <div className="flex items-center gap-2 text-xs">
+            <Input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="h-9 w-36"
+              aria-label="From"
+            />{" "}
+            to{" "}
+            <Input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="h-9 w-36"
+              aria-label="To"
+            />
+          </div>
+        }
+      />
+      <Tabs defaultValue="employees">
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="employees">Employees</TabsTrigger>
+          <TabsTrigger value="teams">Teams</TabsTrigger>
+          <TabsTrigger value="sources">Lead sources</TabsTrigger>
+          <TabsTrigger value="lost">Lost reasons</TabsTrigger>
+          <TabsTrigger value="growth">Monthly growth</TabsTrigger>
+          <TabsTrigger value="targets">Targets</TabsTrigger>
+          {role === "admin" ? <TabsTrigger value="revenue">Revenue</TabsTrigger> : null}
+        </TabsList>
+        <TabsContent value="employees" className="mt-3">
+          <ReportTable name="report_by_employee" args={a} />
+        </TabsContent>
+        <TabsContent value="teams" className="mt-3">
+          <ReportTable name="report_by_team" args={a} enabled={role !== "bds_employee"} />
+        </TabsContent>
+        <TabsContent value="sources" className="mt-3">
+          <ReportTable name="report_lead_sources" args={a} />
+        </TabsContent>
+        <TabsContent value="lost" className="mt-3">
+          <ReportTable name="report_lost_reasons" args={a} />
+        </TabsContent>
+        <TabsContent value="growth" className="mt-3">
+          <ReportTable name="report_monthly_growth" args={{ p_months: 12 }} />
+        </TabsContent>
+        <TabsContent value="targets" className="mt-3">
+          <ReportTable name="target_attainment" args={d} />
+        </TabsContent>
+        {role === "admin" ? (
+          <TabsContent value="revenue" className="mt-3">
+            <Revenue from={from} to={to} />
+          </TabsContent>
+        ) : null}
+      </Tabs>
+    </>
   );
 }

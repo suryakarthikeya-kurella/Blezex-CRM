@@ -1,0 +1,8 @@
+# Security
+Model: **defence in depth, enforced in the database.** (1) `anon` has zero grants. (2) `authenticated` gets table/column grants only where needed (e.g. `leads.owner_id`, `stage`, `converted_*`, `profiles.role/is_active`, all audit/assignment/history tables are *not* writable). (3) RLS policies for SELECT/INSERT/UPDATE/DELETE on every table. (4) Privileged transitions only via SECURITY DEFINER RPCs with empty `search_path` that re-derive identity from `profiles`. (5) Server functions verify the JWT with Supabase Auth, re-check an *active admin* profile, then act.
+
+Removed: hardcoded credentials, localStorage auth, unauthenticated server functions, Google Sheets/Lovable connector variables.
+Required hosted-project settings: **disable "Allow new users to sign up"**, minimum password length ≥10, add Site URL + `/reset-password` redirect URL, configure custom SMTP, enable leaked-password protection if on a plan that offers it, review Auth rate limits.
+Browser session: supabase-js default storage (access token in localStorage) — a known XSS-exposure trade-off; mitigated by the strict security headers in `netlify.toml`, no `dangerouslySetInnerHTML`, CSV formula neutralisation. Moving to cookie sessions (`@supabase/ssr`) is a recommended hardening step.
+**Action required — rotate/retire**: the original passwords and the Google Spreadsheet ID are in Git history (baseline commit). Treat them as compromised: change those passwords anywhere reused, restrict/revoke the sheet and the Lovable connector, and consider history rewriting before the repo is shared.
+Tests: `supabase/tests/11_*.sql` etc. (see status report for the list and results).

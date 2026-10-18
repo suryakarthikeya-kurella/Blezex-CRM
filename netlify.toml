@@ -1,0 +1,18 @@
+# Verified against an actual `npm run build`: client assets -> dist/client, SSR + server functions ->
+# .netlify/v1/functions/server.mjs (emitted by @netlify/vite-plugin-tanstack-start).
+[build]
+  command = "npm run build"
+  publish = "dist/client"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Security headers for the app shell
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"

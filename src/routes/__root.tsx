@@ -79,15 +79,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "BlezeX CRM — Sales Operations Platform" },
+      { title: "BlezeX Connect — Sales Operations" },
       {
         name: "description",
         content:
-          "Internal BlezeX CRM for leads, clients, activities, tasks, payments and team performance.",
+          "Internal BlezeX Connect CRM for leads, clients, activities, tasks and team performance.",
       },
       { name: "author", content: "BlezeX" },
       { name: "robots", content: "noindex, nofollow" },
-      { property: "og:title", content: "BlezeX CRM — Sales Operations Platform" },
+      { property: "og:title", content: "BlezeX Connect — Sales Operations" },
       {
         property: "og:description",
         content: "Internal sales operations workspace for the BlezeX team.",

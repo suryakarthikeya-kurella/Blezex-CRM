@@ -1,19 +1,30 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { Download, Pencil, Plus, Search, Trash2, UserPlus } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Download, Plus, Search } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { PageHeader, PriorityPill, StatusPill, EmptyState } from "@/components/crm/ui-bits";
-import { RecordDialog, type FieldDef } from "@/components/crm/record-dialog";
+import {
+  EmptyState,
+  ErrorBlock,
+  LoadingBlock,
+  PageHeader,
+  PriorityPill,
+  StatusPill,
+} from "@/components/crm/ui-bits";
+import { Pager, SelectBox, userOptions, useUserName } from "@/components/crm/controls";
+import { LeadFormDialog, formToPatch, leadToForm } from "@/components/crm/lead-form";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,486 +36,575 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { ALL_USERS, useAuth } from "@/lib/auth";
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useAuth } from "@/lib/auth";
 import {
-  currency,
-  exportCsv,
-  nextId,
-  nowStamp,
-  num,
-  useCrmMutations,
-  useTable,
-} from "@/lib/crm-hooks";
-import {
-  KANBAN_STAGES,
-  LEAD_SOURCES,
-  LEAD_STATUSES,
-  PRIORITIES,
-  SERVICES,
-  SHEET_COLUMNS,
-  type SheetRow,
-} from "@/lib/crm-schema";
-import { toast } from "sonner";
+  KANBAN_LIMIT,
+  findDuplicates,
+  useAssignLead,
+  useConfig,
+  useCreateLead,
+  useDirectory,
+  useKanbanLeads,
+  useLeads,
+  useMoveStage,
+  type LeadFilters,
+} from "@/lib/api";
+import { supabase } from "@/lib/supabase";
+import { date, downloadCsv, isOverdue, money } from "@/lib/format";
+import { can } from "@/lib/permissions";
+import type { Lead } from "@/lib/db-types";
 
 export const Route = createFileRoute("/leads")({
-  head: () => ({
-    meta: [
-      { title: "Leads — BlezeX CRM" },
-      { name: "description", content: "Track, qualify and convert BlezeX sales leads." },
-      { property: "og:title", content: "Leads — BlezeX CRM" },
-      { property: "og:description", content: "Track, qualify and convert BlezeX sales leads." },
-    ],
-  }),
-  component: LeadsPage,
+  head: () => ({ meta: [{ title: "Leads — BlezeX Connect" }] }),
+  component: () => (
+    <AppShell>
+      <LeadsPage />
+    </AppShell>
+  ),
 });
 
-const LEAD_FIELDS: FieldDef[] = [
-  { name: "Company Name", required: true },
-  { name: "Contact Person", required: true },
-  { name: "Phone Number", type: "tel" },
-  { name: "Email Address", type: "email" },
-  { name: "Service Requirement", type: "select", options: SERVICES },
-  { name: "Lead Source", type: "select", options: LEAD_SOURCES },
-  { name: "Priority", type: "select", options: PRIORITIES },
-  { name: "Status", type: "select", options: LEAD_STATUSES },
-  { name: "Last Follow-up Date", type: "date" },
-  { name: "Next Follow-up Date", type: "date" },
-  { name: "Expected Deal Value", type: "number" },
-  { name: "Probability %", type: "number" },
-  { name: "Expected Closing Date", type: "date" },
-  { name: "Notes", type: "textarea" },
-];
-
 function LeadsPage() {
-  const { user, isAdmin } = useAuth();
-  const { data, isLoading } = useTable("Leads");
-  const clients = useTable("Clients");
-  const { createMutation, updateMutation, deleteMutation } = useCrmMutations("Leads");
-  const clientMutations = useCrmMutations("Clients");
-
+  const { role, profile } = useAuth();
+  const nav = useNavigate();
+  const { data: cfg } = useConfig();
+  const { data: dir } = useDirectory();
+  const userName = useUserName();
+  const [f, setF] = useState<LeadFilters>({ page: 0, sort: "created_at", asc: false });
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [priority, setPriority] = useState("all");
-  const [assignee, setAssignee] = useState("all");
-  const [sortBy, setSortBy] = useState("Created Date");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<SheetRow | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<SheetRow | null>(null);
+  const [tab, setTab] = useState("table");
+  const [creating, setCreating] = useState(false);
+  const [dupes, setDupes] = useState<{
+    values: Record<string, string>;
+    rows: Awaited<ReturnType<typeof findDuplicates>>;
+  } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkTo, setBulkTo] = useState("");
+  const [lostFor, setLostFor] = useState<{ id: string } | null>(null);
+  const [lostReason, setLostReason] = useState("");
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const [exporting, setExporting] = useState(false);
 
-  const canEdit = (lead: SheetRow) => isAdmin || lead["Assigned To"] === user?.email;
+  const leads = useLeads(f);
+  const create = useCreateLead();
+  const move = useMoveStage();
+  const assign = useAssignLead();
+  const canAssign = can(role, "leads.assign");
+  const stageOpts = (cfg?.stages ?? [])
+    .filter((s) => s.is_active)
+    .map((s) => ({ value: s.key, label: s.label }));
+  const stageLabel = (k: string) => cfg?.stages.find((s) => s.key === k)?.label ?? k;
+  const sourceName = (id: string | null) => cfg?.sources.find((s) => s.id === id)?.name ?? "—";
+  const set = (patch: Partial<LeadFilters>) => setF((p) => ({ ...p, page: 0, ...patch }));
 
-  const rows = useMemo(() => {
-    let list = data ?? [];
-    const q = search.trim().toLowerCase();
-    if (q)
-      list = list.filter((l) =>
-        ["Lead ID", "Company Name", "Contact Person", "Email Address", "Phone Number"].some((f) =>
-          String(l[f] ?? "").toLowerCase().includes(q),
-        ),
-      );
-    if (status !== "all") list = list.filter((l) => l["Status"] === status);
-    if (priority !== "all") list = list.filter((l) => l["Priority"] === priority);
-    if (assignee !== "all") list = list.filter((l) => l["Assigned To"] === assignee);
-    return [...list].sort((a, b) => {
-      if (sortBy === "Expected Deal Value") return num(b[sortBy]) - num(a[sortBy]);
-      return String(b[sortBy] ?? "").localeCompare(String(a[sortBy] ?? ""));
-    });
-  }, [data, search, status, priority, assignee, sortBy]);
-
-  const fields: FieldDef[] = [
-    ...LEAD_FIELDS,
-    {
-      name: "Assigned To",
-      type: "select",
-      options: ALL_USERS.map((u) => u.email),
-      disabled: !isAdmin,
-    },
-  ];
-
-  const submit = (values: Record<string, string>) => {
-    const stamp = nowStamp();
-    if (editing) {
-      updateMutation.mutate({
-        row: editing.__row,
-        record: {
-          ...editing,
-          ...values,
-          "Lead ID": editing["Lead ID"],
-          "Created By": editing["Created By"],
-          "Created Date": editing["Created Date"],
-          "Last Updated By": user!.email,
-          "Last Updated Date": stamp,
+  const submitCreate = async (values: Record<string, string>, force = false) => {
+    if (!force) {
+      try {
+        const rows = await findDuplicates({
+          email: values["email"] ?? "",
+          phone: values["phone"] ?? "",
+          company: values["company_name"] ?? "",
+          website: values["website"] ?? "",
+        });
+        if (rows.length) return setDupes({ values, rows });
+      } catch {
+        /* duplicate check is advisory; the DB still enforces integrity */
+      }
+    }
+    const patch = formToPatch(values, { includeOwner: true });
+    create.mutate(
+      { ...patch, request_id: requestId },
+      {
+        onSuccess: (r) => {
+          setCreating(false);
+          setDupes(null);
+          setRequestId(crypto.randomUUID());
+          void nav({ to: "/leads/$leadId", params: { leadId: r.id } });
         },
-      });
-    } else {
-      createMutation.mutate({
-        ...values,
-        "Lead ID": nextId(data, "Lead ID", "LD"),
-        Status: values["Status"] || "New Lead",
-        "Assigned To": values["Assigned To"] || user!.email,
-        "Created By": user!.email,
-        "Created Date": stamp,
-        "Last Updated By": user!.email,
-        "Last Updated Date": stamp,
-      });
-    }
-    setDialogOpen(false);
-  };
-
-  const quickStatus = (lead: SheetRow, value: string) => {
-    updateMutation.mutate({
-      row: lead.__row,
-      record: {
-        ...lead,
-        Status: value,
-        "Last Updated By": user!.email,
-        "Last Updated Date": nowStamp(),
       },
-    });
+    );
   };
 
-  const convertToClient = (lead: SheetRow) => {
-    const exists = (clients.data ?? []).some(
-      (c) => c["Company Name"] === lead["Company Name"] && c["Contact Person"] === lead["Contact Person"],
-    );
-    if (exists) {
-      toast.info("This company already exists in Clients.");
-      return;
+  const quickStage = (l: Lead, stage: string) => {
+    if (stage === "won")
+      return void nav({ to: "/leads/$leadId", params: { leadId: l.id } }).then(() =>
+        toast.info("Use “Convert to client” to mark a lead as Won."),
+      );
+    if (cfg?.stages.find((s) => s.key === stage)?.is_lost) return setLostFor({ id: l.id });
+    move.mutate({ id: l.id, stage, version: l.row_version });
+  };
+
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      let q = supabase.from("leads").select("*").is("archived_at", null);
+      if (f.stage) q = q.eq("stage", f.stage);
+      if (f.owner) q = q.eq("owner_id", f.owner);
+      if (f.priority) q = q.eq("priority", f.priority);
+      const { data, error } = await q.order("created_at", { ascending: false }).limit(5000);
+      if (error) throw error;
+      downloadCsv(
+        `leads-${new Date().toISOString().slice(0, 10)}.csv`,
+        [
+          "lead_number",
+          "legacy_id",
+          "company_name",
+          "contact_name",
+          "email",
+          "phone",
+          "stage",
+          "priority",
+          "estimated_value",
+          "owner",
+          "next_follow_up_at",
+          "created_at",
+        ],
+        (data ?? []).map((r) => ({ ...r, owner: userName(r.owner_id as string | null) })),
+      );
+      if ((data ?? []).length === 5000)
+        toast.warning("Export limited to the first 5,000 rows — narrow the filters.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
     }
-    const stamp = nowStamp();
-    clientMutations.createMutation.mutate({
-      "Client ID": nextId(clients.data, "Client ID", "CL"),
-      "Company Name": lead["Company Name"],
-      "Contact Person": lead["Contact Person"],
-      "Phone Number": lead["Phone Number"],
-      "Email Address": lead["Email Address"],
-      "Service Purchased": lead["Service Requirement"],
-      "Project Value": lead["Expected Deal Value"],
-      "Account Manager": lead["Assigned To"],
-      "Start Date": new Date().toISOString().slice(0, 10),
-      "Project Status": "Onboarding",
-      "Payment Status": "Pending",
-      "Amount Paid": "0",
-      "Balance Amount": lead["Expected Deal Value"],
-      Notes: lead["Notes"],
-      "Created By": user!.email,
-      "Created Date": stamp,
-      "Last Updated By": user!.email,
-      "Last Updated Date": stamp,
-    });
+  };
+
+  const rows = leads.data?.rows ?? [];
+  const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const doBulk = async () => {
+    for (const id of selected)
+      await assign
+        .mutateAsync({ id, to: bulkTo, reason: "Bulk assignment" })
+        .catch(() => undefined);
+    setSelected(new Set());
+    setBulkTo("");
   };
 
   return (
-    <AppShell>
+    <>
       <PageHeader
         title="Leads"
-        subtitle={`${rows.length} of ${(data ?? []).length} leads`}
+        subtitle="Track, qualify and convert opportunities"
         actions={
           <>
-            <Button
-              variant="outline"
-              onClick={() => exportCsv("blezex-leads.csv", SHEET_COLUMNS.Leads, rows)}
-            >
-              <Download className="size-4" /> Export CSV
+            <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting}>
+              <Download className="size-4" /> {exporting ? "Exporting…" : "Export CSV"}
             </Button>
-            <Button
-              onClick={() => {
-                setEditing(null);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="size-4" /> Add Lead
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="size-4" /> New lead
             </Button>
           </>
         }
       />
-
-      <div className="surface mb-4 flex flex-wrap items-center gap-2 p-3">
-        <div className="relative min-w-52 flex-1">
-          <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search company, contact, email…"
-            className="pl-9"
-          />
-        </div>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {LEAD_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={priority} onValueChange={setPriority}>
-          <SelectTrigger className="w-36">
-            <SelectValue placeholder="Priority" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All priorities</SelectItem>
-            {PRIORITIES.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={assignee} onValueChange={setAssignee}>
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder="Assigned to" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Everyone</SelectItem>
-            {ALL_USERS.map((u) => (
-              <SelectItem key={u.email} value={u.email}>
-                {u.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Created Date">Newest first</SelectItem>
-            <SelectItem value="Next Follow-up Date">Next follow-up</SelectItem>
-            <SelectItem value="Expected Deal Value">Deal value</SelectItem>
-            <SelectItem value="Company Name">Company name</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <Tabs defaultValue="table">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="table">Table view</TabsTrigger>
-          <TabsTrigger value="kanban">Kanban view</TabsTrigger>
+          <TabsTrigger value="table">Table</TabsTrigger>
+          <TabsTrigger value="kanban">Kanban</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="table">
-          <div className="surface overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Lead</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Service</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Assigned</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead className="min-w-44">Status</TableHead>
-                  <TableHead>Next follow-up</TableHead>
-                  <TableHead className="text-right">Value</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
+        <TabsContent value="table" className="mt-3">
+          <div className="surface mb-3 flex flex-wrap items-center gap-2 p-3">
+            <form
+              className="relative"
+              onSubmit={(e) => {
+                e.preventDefault();
+                set({ search });
+              }}
+            >
+              <Search className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+              <Input
+                aria-label="Search leads"
+                className="w-60 pl-8"
+                placeholder="Search name, email, phone, ID…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onBlur={() => search !== (f.search ?? "") && set({ search })}
+              />
+            </form>
+            <SelectBox
+              value={f.stage ?? ""}
+              onChange={(v) => set({ stage: v })}
+              options={stageOpts}
+              allLabel="All stages"
+            />
+            <SelectBox
+              value={f.priority ?? ""}
+              onChange={(v) => set({ priority: v })}
+              options={[
+                { value: "high", label: "High" },
+                { value: "medium", label: "Medium" },
+                { value: "low", label: "Low" },
+              ]}
+              allLabel="All priorities"
+              className="w-36"
+            />
+            {role !== "bds_employee" ? (
+              <SelectBox
+                value={f.owner ?? ""}
+                onChange={(v) => set({ owner: v })}
+                options={[{ value: "none", label: "Unassigned" }, ...userOptions(dir?.list)]}
+                allLabel="All owners"
+              />
+            ) : null}
+            <SelectBox
+              value={f.source ?? ""}
+              onChange={(v) => set({ source: v })}
+              options={(cfg?.sources ?? []).map((s) => ({ value: s.id, label: s.name ?? "" }))}
+              allLabel="All sources"
+              className="w-40"
+            />
+            <label className="flex items-center gap-1 text-xs">
+              From{" "}
+              <Input
+                type="date"
+                className="h-9 w-36"
+                aria-label="Created from"
+                onChange={(e) =>
+                  set({ from: e.target.value ? new Date(e.target.value).toISOString() : "" })
+                }
+              />
+            </label>
+            <label className="flex items-center gap-1 text-xs">
+              To{" "}
+              <Input
+                type="date"
+                className="h-9 w-36"
+                aria-label="Created to"
+                onChange={(e) =>
+                  set({
+                    to: e.target.value
+                      ? new Date(new Date(e.target.value).getTime() + 864e5).toISOString()
+                      : "",
+                  })
+                }
+              />
+            </label>
+            {canAssign && selected.size > 0 ? (
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs">{selected.size} selected</span>
+                <SelectBox
+                  value={bulkTo}
+                  onChange={setBulkTo}
+                  options={userOptions(dir?.list)}
+                  placeholder="Assign to…"
+                />
+                <Button size="sm" disabled={!bulkTo || assign.isPending} onClick={doBulk}>
+                  Assign
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          {leads.isLoading ? (
+            <LoadingBlock />
+          ) : leads.isError ? (
+            <ErrorBlock error={leads.error} onRetry={() => leads.refetch()} />
+          ) : rows.length === 0 ? (
+            <EmptyState message="No leads match these filters." />
+          ) : (
+            <div className="surface overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={10}>
-                      <EmptyState message="Loading leads…" />
-                    </TableCell>
+                    {canAssign ? (
+                      <TableHead className="w-8">
+                        <Checkbox
+                          aria-label="Select all"
+                          checked={allChecked}
+                          onCheckedChange={(c) =>
+                            setSelected(c ? new Set(rows.map((r) => r.id)) : new Set())
+                          }
+                        />
+                      </TableHead>
+                    ) : null}
+                    <TableHead>Lead</TableHead>
+                    <TableHead>Company</TableHead>
+                    <TableHead>Stage</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Owner</TableHead>
+                    <TableHead className="text-right">
+                      <button
+                        className="font-medium"
+                        onClick={() => set({ sort: "estimated_value", asc: !(f.asc ?? false) })}
+                      >
+                        Value ↕
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button
+                        className="font-medium"
+                        onClick={() => set({ sort: "next_follow_up_at", asc: true })}
+                      >
+                        Follow-up ↕
+                      </button>
+                    </TableHead>
                   </TableRow>
-                ) : rows.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={10}>
-                      <EmptyState message="No leads match your filters." />
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  rows.map((lead) => (
-                    <TableRow key={lead.__row}>
-                      <TableCell>
-                        <p className="font-medium">{lead["Company Name"]}</p>
-                        <p className="text-xs text-muted-foreground">{lead["Lead ID"]}</p>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((l) => (
+                    <TableRow key={l.id}>
+                      {canAssign ? (
+                        <TableCell>
+                          <Checkbox
+                            aria-label={`Select ${l.company_name}`}
+                            checked={selected.has(l.id)}
+                            onCheckedChange={(c) =>
+                              setSelected((s) => {
+                                const n = new Set(s);
+                                if (c) n.add(l.id);
+                                else n.delete(l.id);
+                                return n;
+                              })
+                            }
+                          />
+                        </TableCell>
+                      ) : null}
+                      <TableCell className="text-xs text-muted-foreground">
+                        {l.lead_number}
                       </TableCell>
                       <TableCell>
-                        <p>{lead["Contact Person"]}</p>
-                        <p className="text-xs text-muted-foreground">{lead["Phone Number"]}</p>
-                      </TableCell>
-                      <TableCell className="max-w-40 truncate">
-                        {lead["Service Requirement"]}
-                      </TableCell>
-                      <TableCell>{lead["Lead Source"]}</TableCell>
-                      <TableCell className="text-xs">{lead["Assigned To"]}</TableCell>
-                      <TableCell>
-                        <PriorityPill value={lead["Priority"]} />
+                        <Link
+                          to="/leads/$leadId"
+                          params={{ leadId: l.id }}
+                          className="font-medium hover:underline"
+                        >
+                          {l.company_name}
+                        </Link>
+                        <div className="text-xs text-muted-foreground">{l.contact_name}</div>
                       </TableCell>
                       <TableCell>
-                        {canEdit(lead) ? (
-                          <Select
-                            value={lead["Status"] || "New Lead"}
-                            onValueChange={(v) => quickStatus(lead, v)}
-                          >
-                            <SelectTrigger className="h-8 w-40 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {LEAD_STATUSES.map((s) => (
-                                <SelectItem key={s} value={s}>
-                                  {s}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                        {l.converted_client_id ? (
+                          <StatusPill value={l.stage} />
                         ) : (
-                          <StatusPill value={lead["Status"]} />
+                          <SelectBox
+                            value={l.stage}
+                            onChange={(v) => quickStage(l, v)}
+                            options={stageOpts}
+                            className="h-8 w-40 text-xs"
+                            ariaLabel={`Stage for ${l.company_name}`}
+                          />
                         )}
                       </TableCell>
-                      <TableCell className="text-xs">{lead["Next Follow-up Date"] || "—"}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {currency(num(lead["Expected Deal Value"]))}
-                      </TableCell>
                       <TableCell>
-                        <div className="flex justify-end gap-1">
-                          {lead["Status"] === "Converted Client" ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Convert to client"
-                              onClick={() => convertToClient(lead)}
-                            >
-                              <UserPlus className="size-4 text-success" />
-                            </Button>
-                          ) : null}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Edit"
-                            disabled={!canEdit(lead)}
-                            onClick={() => {
-                              setEditing(lead);
-                              setDialogOpen(true);
-                            }}
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          {isAdmin ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Delete"
-                              onClick={() => setDeleteTarget(lead)}
-                            >
-                              <Trash2 className="size-4 text-destructive" />
-                            </Button>
-                          ) : null}
-                        </div>
+                        <PriorityPill value={l.priority} />
+                      </TableCell>
+                      <TableCell className="text-xs">{sourceName(l.lead_source_id)}</TableCell>
+                      <TableCell className="text-xs">{userName(l.owner_id)}</TableCell>
+                      <TableCell className="text-right text-xs">
+                        {money(l.estimated_value, l.currency)}
+                      </TableCell>
+                      <TableCell
+                        className={
+                          isOverdue(l.next_follow_up_at) && !["won", "lost"].includes(l.stage)
+                            ? "text-xs font-medium text-destructive"
+                            : "text-xs"
+                        }
+                      >
+                        {date(l.next_follow_up_at)}
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <Pager
+            page={f.page ?? 0}
+            total={leads.data?.total ?? 0}
+            onPage={(p) => setF((x) => ({ ...x, page: p }))}
+          />
         </TabsContent>
 
-        <TabsContent value="kanban">
-          <div className="flex gap-3 overflow-x-auto pb-4">
-            {KANBAN_STAGES.map((stage) => {
-              const stageLeads = rows.filter((l) => (l["Status"] || "New Lead") === stage);
-              return (
-                <div
-                  key={stage}
-                  className="w-72 shrink-0 rounded-xl bg-muted/60 p-3"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const row = Number(e.dataTransfer.getData("text/plain"));
-                    const lead = (data ?? []).find((l) => l.__row === row);
-                    if (!lead) return;
-                    if (!canEdit(lead)) {
-                      toast.error("You can only update leads assigned to you.");
-                      return;
-                    }
-                    if (lead["Status"] !== stage) quickStatus(lead, stage);
-                  }}
-                >
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold">{stage}</p>
-                    <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">
-                      {stageLeads.length}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {stageLeads.map((lead) => (
-                      <div
-                        key={lead.__row}
-                        draggable
-                        onDragStart={(e) => e.dataTransfer.setData("text/plain", String(lead.__row))}
-                        className="surface cursor-grab p-3 active:cursor-grabbing"
-                        onDoubleClick={() => {
-                          if (!canEdit(lead)) return;
-                          setEditing(lead);
-                          setDialogOpen(true);
-                        }}
-                      >
-                        <p className="text-sm font-medium">{lead["Company Name"]}</p>
-                        <p className="text-xs text-muted-foreground">{lead["Contact Person"]}</p>
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <PriorityPill value={lead["Priority"]} />
-                          <span className="text-xs font-medium">
-                            {currency(num(lead["Expected Deal Value"]))}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {stageLeads.length === 0 ? (
-                      <p className="py-6 text-center text-xs text-muted-foreground">Drop here</p>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <TabsContent value="kanban" className="mt-3">
+          <Kanban
+            owner={role === "bds_employee" ? profile?.id : f.owner}
+            stages={cfg?.stages ?? []}
+            onMove={quickStage}
+          />
         </TabsContent>
       </Tabs>
 
-      <RecordDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        title={editing ? `Edit ${editing["Company Name"]}` : "Add lead"}
-        description={editing ? `Lead ${editing["Lead ID"]}` : "Create a new sales lead."}
-        fields={fields}
-        initial={editing ?? { Status: "New Lead", Priority: "Medium", "Assigned To": user!.email }}
-        submitting={createMutation.isPending || updateMutation.isPending}
-        onSubmit={submit}
+      <LeadFormDialog
+        open={creating}
+        onOpenChange={setCreating}
+        title="New lead"
+        initial={leadToForm(null)}
+        allowOwner
+        submitting={create.isPending}
+        onSubmit={(v) => submitCreate(v)}
       />
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+      <AlertDialog open={!!dupes} onOpenChange={(o) => !o && setDupes(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this lead?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget?.["Company Name"]} will be permanently removed from the shared sheet.
+            <AlertDialogTitle>Possible duplicate</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p>
+                  Similar leads already exist. Coordinate with the owner before creating another:
+                </p>
+                <ul className="mt-2 list-disc pl-5 text-sm">
+                  {dupes?.rows.map((d) => (
+                    <li key={d.lead_number}>
+                      {d.lead_number} — {d.company_name} ({d.match_reason}; owner:{" "}
+                      {d.owner_name ?? "unassigned"})
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (deleteTarget) deleteMutation.mutate(deleteTarget.__row);
-                setDeleteTarget(null);
-              }}
-            >
-              Delete
+            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogAction onClick={() => dupes && submitCreate(dupes.values, true)}>
+              Create anyway
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AppShell>
+
+      <Dialog open={!!lostFor} onOpenChange={(o) => !o && setLostFor(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark as lost</DialogTitle>
+          </DialogHeader>
+          <SelectBox
+            value={lostReason}
+            onChange={setLostReason}
+            options={(cfg?.lostReasons ?? [])
+              .filter((r) => r.is_active)
+              .map((r) => ({ value: r.id, label: r.label ?? "" }))}
+            placeholder="Select a lost reason"
+            className="w-full"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLostFor(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!lostReason || move.isPending}
+              onClick={() => {
+                if (lostFor)
+                  move.mutate(
+                    {
+                      id: lostFor.id,
+                      stage: cfg?.stages.find((s) => s.is_lost)?.key ?? "lost",
+                      lostReasonId: lostReason,
+                    },
+                    {
+                      onSuccess: () => {
+                        setLostFor(null);
+                        setLostReason("");
+                      },
+                    },
+                  );
+              }}
+            >
+              Mark lost
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function Kanban({
+  owner,
+  stages,
+  onMove,
+}: {
+  owner: string | undefined;
+  stages: { key: string; label: string; is_active: boolean; position: number }[];
+  onMove: (l: Lead, stage: string) => void;
+}) {
+  const { data, isLoading, isError, error, refetch } = useKanbanLeads(owner || undefined);
+  const userName = useUserName();
+  const [over, setOver] = useState<string | null>(null);
+  const cols = useMemo(
+    () => stages.filter((s) => s.is_active).sort((a, b) => a.position - b.position),
+    [stages],
+  );
+  const byStage = useMemo(() => {
+    const m = new Map<string, Lead[]>();
+    (data?.rows ?? []).forEach((l) => m.set(l.stage, [...(m.get(l.stage) ?? []), l]));
+    return m;
+  }, [data]);
+  if (isLoading) return <LoadingBlock />;
+  if (isError) return <ErrorBlock error={error} onRetry={() => refetch()} />;
+  return (
+    <>
+      {(data?.total ?? 0) > KANBAN_LIMIT ? (
+        <p className="mb-2 text-xs text-warning">
+          Showing the {KANBAN_LIMIT} most recently updated of {data?.total} leads. Use the table for
+          the full list.
+        </p>
+      ) : null}
+      <div className="flex gap-3 overflow-x-auto pb-3">
+        {cols.map((c) => (
+          <section
+            key={c.key}
+            aria-label={c.label}
+            className={`w-64 shrink-0 rounded-lg border bg-muted/40 p-2 ${over === c.key ? "border-primary bg-primary/5" : "border-border"}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setOver(c.key);
+            }}
+            onDragLeave={() => setOver(null)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setOver(null);
+              const l = data?.rows.find((x) => x.id === e.dataTransfer.getData("text/plain"));
+              if (l && l.stage !== c.key) onMove(l, c.key);
+            }}
+          >
+            <h3 className="mb-2 flex justify-between px-1 text-xs font-semibold">
+              {c.label}
+              <span className="text-muted-foreground">{byStage.get(c.key)?.length ?? 0}</span>
+            </h3>
+            <div className="space-y-2">
+              {(byStage.get(c.key) ?? []).map((l) => (
+                <article
+                  key={l.id}
+                  draggable={!l.converted_client_id}
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", l.id)}
+                  className="surface cursor-grab p-2.5 text-sm active:cursor-grabbing"
+                >
+                  <Link
+                    to="/leads/$leadId"
+                    params={{ leadId: l.id }}
+                    className="font-medium hover:underline"
+                  >
+                    {l.company_name}
+                  </Link>
+                  <p className="text-xs text-muted-foreground">
+                    {l.contact_name} · {userName(l.owner_id)}
+                  </p>
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <PriorityPill value={l.priority} />
+                    <span className="text-xs">{money(l.estimated_value, l.currency)}</span>
+                  </div>
+                  {!l.converted_client_id ? (
+                    <SelectBox
+                      value={l.stage}
+                      onChange={(v) => onMove(l, v)}
+                      options={cols.map((s) => ({ value: s.key, label: s.label }))}
+                      className="mt-2 h-7 w-full text-xs"
+                      ariaLabel={`Move ${l.company_name} to stage`}
+                    />
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </>
   );
 }

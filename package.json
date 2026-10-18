@@ -9,7 +9,11 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:db": "PSQL_AS_POSTGRES= scripts/db-test.sh",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "overrides": {
     "rolldown": "1.2.1"

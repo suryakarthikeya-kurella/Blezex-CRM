@@ -1,359 +1,467 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { AppShell } from "@/components/app-shell";
-import { EmptyState, KpiCard, PageHeader, SectionCard, StatusPill } from "@/components/crm/ui-bits";
-import { ALL_USERS, useAuth } from "@/lib/auth";
-import { currency, num, today, useTable } from "@/lib/crm-hooks";
-import { LEAD_STATUSES } from "@/lib/crm-schema";
+import {
+  EmptyState,
+  ErrorBlock,
+  KpiCard,
+  LoadingBlock,
+  PageHeader,
+  SectionCard,
+} from "@/components/crm/ui-bits";
+import { SelectBox } from "@/components/crm/controls";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useAuth } from "@/lib/auth";
+import { useActionItems, useDashboard, useReport } from "@/lib/api";
+import { dateTime, money, num } from "@/lib/format";
+import { ROLE_LABEL } from "@/lib/permissions";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Dashboard — BlezeX CRM" },
-      {
-        name: "description",
-        content: "Pipeline, revenue and team activity at a glance for the BlezeX sales team.",
-      },
-      { property: "og:title", content: "Dashboard — BlezeX CRM" },
-      {
-        property: "og:description",
-        content: "Pipeline, revenue and team activity at a glance for the BlezeX sales team.",
-      },
-    ],
-  }),
-  component: DashboardPage,
+  head: () => ({ meta: [{ title: "Dashboard — BlezeX Connect" }] }),
+  component: () => (
+    <AppShell>
+      <Dashboard />
+    </AppShell>
+  ),
 });
 
-const COLORS = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
+type EmpRow = {
+  user_id: string;
+  full_name: string;
+  role: string;
+  active_leads: number;
+  new_leads: number;
+  meetings: number;
+  proposals: number;
+  conversions: number;
+  lost: number;
+  outreach: number;
+  tasks_completed: number;
+  conversion_rate: number | null;
+};
+type TeamRow = {
+  team_id: string;
+  team_name: string;
+  members: number;
+  new_leads: number;
+  meetings: number;
+  proposals: number;
+  conversions: number;
+  outreach: number;
+  won_value: number;
+  conversion_rate: number | null;
+};
+type Target = {
+  user_id: string;
+  full_name: string;
+  target_type: string;
+  target_value: number;
+  actual: number;
+  pct: number | null;
+};
+type Growth = { month: string; new_leads: number; won: number; lost: number; won_value: number };
+type Revenue = {
+  invoiced: number;
+  collected: number;
+  outstanding: number;
+  overdue: number;
+  won_value: number;
+};
+
+const PERIODS = [
+  { value: "7", label: "Last 7 days" },
+  { value: "30", label: "Last 30 days" },
+  { value: "90", label: "Last 90 days" },
+  { value: "365", label: "Last 12 months" },
 ];
 
-function monthKey(d: string) {
-  return String(d ?? "").slice(0, 7);
-}
-
-function DashboardPage() {
-  const { user, isAdmin } = useAuth();
-  const leads = useTable("Leads");
-  const clients = useTable("Clients");
-  const activities = useTable("Activities");
-  const tasks = useTable("Tasks");
-  const day = today();
-
-  const L = leads.data ?? [];
-  const C = clients.data ?? [];
-  const A = activities.data ?? [];
-  const T = tasks.data ?? [];
-
-  const count = (s: string) => L.filter((l) => l["Status"] === s).length;
-  const converted = count("Converted Client");
-  const conversionRate = L.length ? Math.round((converted / L.length) * 100) : 0;
-  const pipeline = L.filter((l) => !["Converted Client", "Lost"].includes(l["Status"])).reduce(
-    (s, l) => s + num(l["Expected Deal Value"]),
-    0,
+function Dashboard() {
+  const { role, profile } = useAuth();
+  const [days, setDays] = useState("30");
+  const [mine, setMine] = useState(role === "bds_employee");
+  const range = useMemo(
+    () => ({
+      from: new Date(Date.now() - Number(days) * 864e5).toISOString(),
+      to: new Date(Date.now() + 60_000).toISOString(),
+    }),
+    [days],
   );
-  const revenue = C.reduce((s, c) => s + num(c["Amount Paid"]), 0);
-  const pendingPayments = C.reduce((s, c) => s + num(c["Balance Amount"]), 0);
-
-  const byStatus = useMemo(
-    () => LEAD_STATUSES.map((s) => ({ name: s, value: count(s) })).filter((d) => d.value > 0),
-    [L],
+  const scope = mine || role === "bds_employee" ? "mine" : "visible";
+  const d = useDashboard(range.from, range.to, scope);
+  const actions = useActionItems();
+  const company = role === "admin" && !mine;
+  const teamView = role === "mentor" && !mine;
+  const emp = useReport<EmpRow>(
+    "report_by_employee",
+    { p_from: range.from, p_to: range.to },
+    teamView || company,
   );
-
-  const bySource = useMemo(() => {
-    const map = new Map<string, number>();
-    L.forEach((l) => {
-      const k = l["Lead Source"] || "Unknown";
-      map.set(k, (map.get(k) ?? 0) + 1);
-    });
-    return [...map].map(([name, value]) => ({ name, value }));
-  }, [L]);
-
-  const monthly = useMemo(() => {
-    const map = new Map<string, { month: string; conversions: number; revenue: number }>();
-    L.filter((l) => l["Status"] === "Converted Client").forEach((l) => {
-      const k = monthKey(l["Last Updated Date"] || l["Created Date"]);
-      if (!k) return;
-      const e = map.get(k) ?? { month: k, conversions: 0, revenue: 0 };
-      e.conversions += 1;
-      map.set(k, e);
-    });
-    C.forEach((c) => {
-      const k = monthKey(c["Start Date"] || c["Created Date"]);
-      if (!k) return;
-      const e = map.get(k) ?? { month: k, conversions: 0, revenue: 0 };
-      e.revenue += num(c["Amount Paid"]);
-      map.set(k, e);
-    });
-    return [...map.values()].sort((a, b) => a.month.localeCompare(b.month));
-  }, [L, C]);
-
-  const teamPerf = useMemo(
-    () =>
-      ALL_USERS.map((u) => ({
-        name: u.name,
-        leads: L.filter((l) => l["Assigned To"] === u.email).length,
-        activities: A.filter((a) => a["Owner"] === u.email).length,
-        conversions: L.filter(
-          (l) => l["Assigned To"] === u.email && l["Status"] === "Converted Client",
-        ).length,
-      })),
-    [L, A],
+  const teams = useReport<TeamRow>(
+    "report_by_team",
+    { p_from: range.from, p_to: range.to },
+    company,
   );
-
-  const mine = (owner: string) => isAdmin || owner === user?.email;
-  const recentActivities = [...A]
-    .sort((a, b) => String(b["Date"]).localeCompare(String(a["Date"])))
-    .slice(0, 6);
-  const upcoming = L.filter(
-    (l) => mine(l["Assigned To"]) && l["Next Follow-up Date"] && l["Next Follow-up Date"] >= day,
-  )
-    .sort((a, b) => a["Next Follow-up Date"].localeCompare(b["Next Follow-up Date"]))
-    .slice(0, 6);
-  const pendingTasks = T.filter((t) => mine(t["Assigned To"]) && t["Status"] !== "Completed").slice(
-    0,
-    6,
+  const growth = useReport<Growth>("report_monthly_growth", { p_months: 6 }, company);
+  const revenue = useReport<Revenue>(
+    "report_revenue",
+    { p_from: range.from.slice(0, 10), p_to: range.to.slice(0, 10) },
+    company,
   );
-  const duePayments = C.filter((c) => num(c["Balance Amount"]) > 0).slice(0, 6);
+  const targets = useReport<Target>("target_attainment", {
+    p_from: range.from.slice(0, 10),
+    p_to: range.to.slice(0, 10),
+  });
+
+  const title =
+    role === "admin"
+      ? mine
+        ? "My dashboard"
+        : "Company dashboard"
+      : role === "mentor"
+        ? mine
+          ? "My dashboard"
+          : "Team dashboard"
+        : "My dashboard";
+  const myTargets = (targets.data ?? []).filter(
+    (t) => scope === "visible" || t.user_id === profile?.id,
+  );
+  const rev = revenue.data?.[0] as unknown as Revenue | undefined;
 
   return (
-    <AppShell>
+    <>
       <PageHeader
-        title={`Welcome back, ${user?.name}`}
-        subtitle="Live pipeline from the shared BlezeX sheet"
+        title={title}
+        subtitle={`${role ? ROLE_LABEL[role] : ""} workspace`}
+        actions={
+          <>
+            {role !== "bds_employee" ? (
+              <Button
+                variant={mine ? "default" : "outline"}
+                size="sm"
+                onClick={() => setMine((m) => !m)}
+              >
+                {mine ? "Show " + (role === "admin" ? "company" : "team") : "Show my own"}
+              </Button>
+            ) : null}
+            <SelectBox
+              value={days}
+              onChange={setDays}
+              options={PERIODS}
+              className="w-40"
+              ariaLabel="Period"
+            />
+          </>
+        }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Total leads" value={L.length} tone="primary" />
-        <KpiCard label="New leads" value={count("New Lead")} />
-        <KpiCard label="Contacted" value={count("Contacted")} />
-        <KpiCard label="Meetings scheduled" value={count("Meeting Scheduled")} />
-        <KpiCard label="Proposals sent" value={count("Proposal Sent")} />
-        <KpiCard label="Negotiations" value={count("Negotiation")} tone="warning" />
-        <KpiCard label="Converted clients" value={converted} tone="success" />
-        <KpiCard label="Lost leads" value={count("Lost")} tone="danger" />
-        <KpiCard label="Conversion rate" value={`${conversionRate}%`} tone="primary" />
-        <KpiCard label="Pipeline value" value={currency(pipeline)} />
-        <KpiCard label="Revenue closed" value={currency(revenue)} tone="success" />
-        <KpiCard label="Pending payments" value={currency(pendingPayments)} tone="warning" />
-      </div>
+      {d.isLoading ? (
+        <LoadingBlock rows={3} />
+      ) : d.isError ? (
+        <ErrorBlock error={d.error} onRetry={() => d.refetch()} />
+      ) : d.data ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <KpiCard
+              label="Active leads"
+              value={num(d.data.active_leads)}
+              hint={`${num(d.data.new_leads)} new in period`}
+            />
+            <KpiCard
+              label="Qualified"
+              value={num(d.data.qualified)}
+              hint="entered Qualified in period"
+              tone="primary"
+            />
+            <KpiCard label="Meetings booked" value={num(d.data.meetings_booked)} />
+            <KpiCard label="Proposals sent" value={num(d.data.proposals_sent)} />
+            <KpiCard
+              label="Won / Lost"
+              value={`${num(d.data.won)} / ${num(d.data.lost)}`}
+              hint={
+                d.data.won + d.data.lost > 0
+                  ? `${Math.round((100 * d.data.won) / (d.data.won + d.data.lost))}% conversion`
+                  : "no closed deals yet"
+              }
+              tone="success"
+            />
+            <KpiCard
+              label="Open pipeline value"
+              value={money(d.data.pipeline_value)}
+              hint="estimates — not revenue"
+            />
+            <KpiCard
+              label="Won deal value"
+              value={money(d.data.won_value)}
+              hint="agreed project value — not cash"
+              tone="success"
+            />
+            <KpiCard
+              label="Pending approvals"
+              value={num(d.data.pending_approvals)}
+              tone={d.data.pending_approvals ? "warning" : "default"}
+            />
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <KpiCard label="Follow-ups today" value={num(d.data.follow_ups_today)} />
+            <KpiCard
+              label="Overdue follow-ups"
+              value={num(d.data.overdue_follow_ups)}
+              tone={d.data.overdue_follow_ups ? "danger" : "default"}
+            />
+            <KpiCard
+              label="Stale leads"
+              value={num(d.data.stale_leads)}
+              hint="no contact for a while"
+              tone={d.data.stale_leads ? "warning" : "default"}
+            />
+            <KpiCard label="Tasks due today" value={num(d.data.tasks_due_today)} />
+            <KpiCard
+              label="Overdue tasks"
+              value={num(d.data.overdue_tasks)}
+              tone={d.data.overdue_tasks ? "danger" : "default"}
+            />
+          </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Leads by status">
-          {byStatus.length === 0 ? (
-            <EmptyState message="No leads yet." />
-          ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={byStatus}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-20} height={60} dy={10} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="value" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </SectionCard>
-
-        <SectionCard title="Leads by source">
-          {bySource.length === 0 ? (
-            <EmptyState message="No leads yet." />
-          ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={bySource} dataKey="value" nameKey="name" outerRadius={90} label>
-                  {bySource.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <SectionCard title="Leads by stage" className="lg:col-span-2">
+              <div className="h-64" role="img" aria-label="Bar chart of leads per pipeline stage">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={d.data.by_stage}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 11 }}
+                      interval={0}
+                      angle={-25}
+                      height={60}
+                      textAnchor="end"
+                    />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar
+                      dataKey="count"
+                      name="Leads"
+                      fill="var(--color-chart-1)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
+            <SectionCard
+              title="My action centre"
+              action={
+                <Link to="/tasks" className="text-xs text-primary hover:underline">
+                  Tasks
+                </Link>
+              }
+            >
+              {actions.isError ? (
+                <ErrorBlock error={actions.error} />
+              ) : (actions.data ?? []).length === 0 ? (
+                <EmptyState message="Nothing due today. 🎉" />
+              ) : (
+                <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+                  {(actions.data ?? []).slice(0, 20).map((a) => (
+                    <li key={a.kind + a.id} className="flex items-start justify-between gap-2">
+                      {a.kind === "follow_up" ? (
+                        <Link
+                          to="/leads/$leadId"
+                          params={{ leadId: a.id }}
+                          className="hover:underline"
+                        >
+                          Follow up — {a.title}
+                        </Link>
+                      ) : (
+                        <span>Task — {a.title}</span>
+                      )}
+                      <span
+                        className={
+                          a.is_overdue
+                            ? "shrink-0 text-xs font-medium text-destructive"
+                            : "shrink-0 text-xs text-muted-foreground"
+                        }
+                      >
+                        {a.is_overdue ? "Overdue" : dateTime(a.due_at)}
+                      </span>
+                    </li>
                   ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </SectionCard>
+                </ul>
+              )}
+            </SectionCard>
+          </div>
 
-        <SectionCard title="Monthly conversions">
-          {monthly.length === 0 ? (
-            <EmptyState message="No conversions yet." />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={monthly}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="conversions" fill="var(--color-chart-2)" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </SectionCard>
-
-        <SectionCard title="Revenue trend">
-          {monthly.length === 0 ? (
-            <EmptyState message="No revenue recorded yet." />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={monthly}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => currency(Number(v))} />
-                <Line
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="var(--color-chart-1)"
-                  strokeWidth={2.5}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </SectionCard>
-
-        <SectionCard title="Team performance" className="lg:col-span-2">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={teamPerf}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Bar dataKey="leads" name="Leads" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
-              <Bar
-                dataKey="activities"
-                name="Activities"
-                fill="var(--color-chart-3)"
-                radius={[6, 6, 0, 0]}
-              />
-              <Bar
-                dataKey="conversions"
-                name="Conversions"
-                fill="var(--color-chart-2)"
-                radius={[6, 6, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </SectionCard>
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-        <SectionCard
-          title="Recent activities"
-          action={
-            <Link to="/activities" className="text-xs text-primary hover:underline">
-              View all
-            </Link>
-          }
-        >
-          {recentActivities.length === 0 ? (
-            <EmptyState message="Nothing logged yet." />
-          ) : (
-            <ul className="space-y-3">
-              {recentActivities.map((a) => (
-                <li key={a.__row} className="text-sm">
-                  <div className="flex items-center gap-2">
-                    <StatusPill value={a["Activity Type"]} />
-                    <span className="text-xs text-muted-foreground">{a["Date"]}</span>
+          {myTargets.length > 0 ? (
+            <SectionCard title="Target progress" className="mt-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {myTargets.map((t, i) => (
+                  <div key={i}>
+                    <div className="flex justify-between text-xs">
+                      <span>
+                        {scope === "visible" ? `${t.full_name} · ` : ""}
+                        {t.target_type.replace(/_/g, " ")}
+                      </span>
+                      <span>
+                        {num(t.actual)} / {num(t.target_value)}
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full bg-primary"
+                        style={{ width: `${Math.min(100, t.pct ?? 0)}%` }}
+                      />
+                    </div>
                   </div>
-                  <p className="mt-1 font-medium">{a["Company"]}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {a["Discussion Summary"]}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SectionCard>
+                ))}
+              </div>
+            </SectionCard>
+          ) : null}
 
-        <SectionCard
-          title="Upcoming follow-ups"
-          action={
-            <Link to="/leads" className="text-xs text-primary hover:underline">
-              View leads
-            </Link>
-          }
-        >
-          {upcoming.length === 0 ? (
-            <EmptyState message="No follow-ups scheduled." />
-          ) : (
-            <ul className="space-y-3">
-              {upcoming.map((l) => (
-                <li key={l.__row} className="text-sm">
-                  <p className="font-medium">{l["Company Name"]}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {l["Next Follow-up Date"]} · {l["Status"]}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SectionCard>
+          {company ? (
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <SectionCard title="Revenue (cash vs. billed vs. won)">
+                {revenue.isError ? (
+                  <ErrorBlock error={revenue.error} />
+                ) : rev ? (
+                  <dl className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Invoiced</dt>
+                      <dd className="font-semibold">{money(rev.invoiced)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Payments received (net)</dt>
+                      <dd className="font-semibold text-success">{money(rev.collected)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Outstanding</dt>
+                      <dd className="font-semibold">{money(rev.outstanding)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Overdue</dt>
+                      <dd className="font-semibold text-destructive">{money(rev.overdue)}</dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <LoadingBlock rows={2} />
+                )}
+              </SectionCard>
+              <SectionCard title="Monthly growth (last 6 months)">
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={growth.data ?? []}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip />
+                      <Line dataKey="new_leads" name="New leads" stroke="var(--color-chart-1)" />
+                      <Line dataKey="won" name="Won" stroke="var(--color-chart-2)" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </SectionCard>
+              <SectionCard title="Team performance" className="lg:col-span-2">
+                {teams.isError ? (
+                  <ErrorBlock error={teams.error} />
+                ) : (teams.data ?? []).length === 0 ? (
+                  <EmptyState message="No teams yet — create one under Team." />
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Team</TableHead>
+                        <TableHead className="text-right">Members</TableHead>
+                        <TableHead className="text-right">New leads</TableHead>
+                        <TableHead className="text-right">Outreach</TableHead>
+                        <TableHead className="text-right">Meetings</TableHead>
+                        <TableHead className="text-right">Won</TableHead>
+                        <TableHead className="text-right">Won value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(teams.data ?? []).map((t) => (
+                        <TableRow key={t.team_id}>
+                          <TableCell className="font-medium">{t.team_name}</TableCell>
+                          <TableCell className="text-right">{t.members}</TableCell>
+                          <TableCell className="text-right">{num(t.new_leads)}</TableCell>
+                          <TableCell className="text-right">{num(t.outreach)}</TableCell>
+                          <TableCell className="text-right">{num(t.meetings)}</TableCell>
+                          <TableCell className="text-right">{num(t.conversions)}</TableCell>
+                          <TableCell className="text-right">{money(t.won_value)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </SectionCard>
+            </div>
+          ) : null}
 
-        <SectionCard
-          title="Pending tasks"
-          action={
-            <Link to="/tasks" className="text-xs text-primary hover:underline">
-              View tasks
-            </Link>
-          }
-        >
-          {pendingTasks.length === 0 ? (
-            <EmptyState message="Nothing pending." />
-          ) : (
-            <ul className="space-y-3">
-              {pendingTasks.map((t) => (
-                <li key={t.__row} className="text-sm">
-                  <p className="font-medium">{t["Task Title"]}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Due {t["Due Date"] || "—"} · {t["Status"]}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SectionCard>
-
-        <SectionCard
-          title="Pending payments"
-          action={
-            <Link to="/clients" className="text-xs text-primary hover:underline">
-              View clients
-            </Link>
-          }
-        >
-          {duePayments.length === 0 ? (
-            <EmptyState message="All payments settled." />
-          ) : (
-            <ul className="space-y-3">
-              {duePayments.map((c) => (
-                <li key={c.__row} className="text-sm">
-                  <p className="font-medium">{c["Company Name"]}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {currency(num(c["Balance Amount"]))} outstanding · {c["Payment Status"]}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SectionCard>
-      </div>
-    </AppShell>
+          {teamView || company ? (
+            <SectionCard
+              title={teamView ? "My team — employee activity" : "Employee performance"}
+              className="mt-4"
+            >
+              {emp.isError ? (
+                <ErrorBlock error={emp.error} />
+              ) : (emp.data ?? []).length === 0 ? (
+                <EmptyState message="No team members to show." />
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead className="text-right">Active leads</TableHead>
+                        <TableHead className="text-right">Outreach</TableHead>
+                        <TableHead className="text-right">Meetings</TableHead>
+                        <TableHead className="text-right">Proposals</TableHead>
+                        <TableHead className="text-right">Won</TableHead>
+                        <TableHead className="text-right">Lost</TableHead>
+                        <TableHead className="text-right">Conv. %</TableHead>
+                        <TableHead className="text-right">Tasks done</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(emp.data ?? []).map((e) => (
+                        <TableRow key={e.user_id}>
+                          <TableCell className="font-medium">{e.full_name}</TableCell>
+                          <TableCell className="text-right">{e.active_leads}</TableCell>
+                          <TableCell className="text-right">{num(e.outreach)}</TableCell>
+                          <TableCell className="text-right">{num(e.meetings)}</TableCell>
+                          <TableCell className="text-right">{num(e.proposals)}</TableCell>
+                          <TableCell className="text-right">{num(e.conversions)}</TableCell>
+                          <TableCell className="text-right">{num(e.lost)}</TableCell>
+                          <TableCell className="text-right">{e.conversion_rate ?? "—"}</TableCell>
+                          <TableCell className="text-right">{num(e.tasks_completed)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </SectionCard>
+          ) : null}
+        </>
+      ) : null}
+    </>
   );
 }

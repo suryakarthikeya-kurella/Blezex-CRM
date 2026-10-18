@@ -11,11 +11,21 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActivitiesRouteImport } from './routes/activities'
+import { Route as ApprovalsRouteImport } from './routes/approvals'
+import { Route as AuditLogsRouteImport } from './routes/audit-logs'
 import { Route as ClientsRouteImport } from './routes/clients'
+import { Route as DailyReportsRouteImport } from './routes/daily-reports'
+import { Route as FinanceRouteImport } from './routes/finance'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TasksRouteImport } from './routes/tasks'
+import { Route as TeamRouteImport } from './routes/team'
+import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
+import { Route as LeadsLeadIdRouteImport } from './routes/leads.$leadId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -27,9 +37,34 @@ const ActivitiesRoute = ActivitiesRouteImport.update({
   path: '/activities',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApprovalsRoute = ApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditLogsRoute = AuditLogsRouteImport.update({
+  id: '/audit-logs',
+  path: '/audit-logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ClientsRoute = ClientsRouteImport.update({
   id: '/clients',
   path: '/clients',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DailyReportsRoute = DailyReportsRouteImport.update({
+  id: '/daily-reports',
+  path: '/daily-reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceRoute = FinanceRouteImport.update({
+  id: '/finance',
+  path: '/finance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LeadsRoute = LeadsRouteImport.update({
@@ -37,9 +72,19 @@ const LeadsRoute = LeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NotificationsRoute = NotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -52,73 +97,156 @@ const TasksRoute = TasksRouteImport.update({
   path: '/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeamRoute = TeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
+  id: '/$clientId',
+  path: '/$clientId',
+  getParentRoute: () => ClientsRoute,
+} as any)
+const LeadsLeadIdRoute = LeadsLeadIdRouteImport.update({
+  id: '/$leadId',
+  path: '/$leadId',
+  getParentRoute: () => LeadsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activities': typeof ActivitiesRoute
-  '/clients': typeof ClientsRoute
-  '/leads': typeof LeadsRoute
+  '/approvals': typeof ApprovalsRoute
+  '/audit-logs': typeof AuditLogsRoute
+  '/clients': typeof ClientsRouteWithChildren
+  '/daily-reports': typeof DailyReportsRoute
+  '/finance': typeof FinanceRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/leads': typeof LeadsRouteWithChildren
+  '/notifications': typeof NotificationsRoute
   '/reports': typeof ReportsRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRoute
+  '/team': typeof TeamRoute
+  '/clients/$clientId': typeof ClientsClientIdRoute
+  '/leads/$leadId': typeof LeadsLeadIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activities': typeof ActivitiesRoute
-  '/clients': typeof ClientsRoute
-  '/leads': typeof LeadsRoute
+  '/approvals': typeof ApprovalsRoute
+  '/audit-logs': typeof AuditLogsRoute
+  '/clients': typeof ClientsRouteWithChildren
+  '/daily-reports': typeof DailyReportsRoute
+  '/finance': typeof FinanceRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/leads': typeof LeadsRouteWithChildren
+  '/notifications': typeof NotificationsRoute
   '/reports': typeof ReportsRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRoute
+  '/team': typeof TeamRoute
+  '/clients/$clientId': typeof ClientsClientIdRoute
+  '/leads/$leadId': typeof LeadsLeadIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/activities': typeof ActivitiesRoute
-  '/clients': typeof ClientsRoute
-  '/leads': typeof LeadsRoute
+  '/approvals': typeof ApprovalsRoute
+  '/audit-logs': typeof AuditLogsRoute
+  '/clients': typeof ClientsRouteWithChildren
+  '/daily-reports': typeof DailyReportsRoute
+  '/finance': typeof FinanceRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/leads': typeof LeadsRouteWithChildren
+  '/notifications': typeof NotificationsRoute
   '/reports': typeof ReportsRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRoute
+  '/team': typeof TeamRoute
+  '/clients/$clientId': typeof ClientsClientIdRoute
+  '/leads/$leadId': typeof LeadsLeadIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/activities'
+    | '/approvals'
+    | '/audit-logs'
     | '/clients'
+    | '/daily-reports'
+    | '/finance'
+    | '/forgot-password'
     | '/leads'
+    | '/notifications'
     | '/reports'
+    | '/reset-password'
     | '/settings'
     | '/tasks'
+    | '/team'
+    | '/clients/$clientId'
+    | '/leads/$leadId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/activities'
+    | '/approvals'
+    | '/audit-logs'
     | '/clients'
+    | '/daily-reports'
+    | '/finance'
+    | '/forgot-password'
     | '/leads'
+    | '/notifications'
     | '/reports'
+    | '/reset-password'
     | '/settings'
     | '/tasks'
+    | '/team'
+    | '/clients/$clientId'
+    | '/leads/$leadId'
   id:
     | '__root__'
     | '/'
     | '/activities'
+    | '/approvals'
+    | '/audit-logs'
     | '/clients'
+    | '/daily-reports'
+    | '/finance'
+    | '/forgot-password'
     | '/leads'
+    | '/notifications'
     | '/reports'
+    | '/reset-password'
     | '/settings'
     | '/tasks'
+    | '/team'
+    | '/clients/$clientId'
+    | '/leads/$leadId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivitiesRoute: typeof ActivitiesRoute
-  ClientsRoute: typeof ClientsRoute
-  LeadsRoute: typeof LeadsRoute
+  ApprovalsRoute: typeof ApprovalsRoute
+  AuditLogsRoute: typeof AuditLogsRoute
+  ClientsRoute: typeof ClientsRouteWithChildren
+  DailyReportsRoute: typeof DailyReportsRoute
+  FinanceRoute: typeof FinanceRoute
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
+  LeadsRoute: typeof LeadsRouteWithChildren
+  NotificationsRoute: typeof NotificationsRoute
   ReportsRoute: typeof ReportsRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
   TasksRoute: typeof TasksRoute
+  TeamRoute: typeof TeamRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -137,11 +265,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ActivitiesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/approvals': {
+      id: '/approvals'
+      path: '/approvals'
+      fullPath: '/approvals'
+      preLoaderRoute: typeof ApprovalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit-logs': {
+      id: '/audit-logs'
+      path: '/audit-logs'
+      fullPath: '/audit-logs'
+      preLoaderRoute: typeof AuditLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/clients': {
       id: '/clients'
       path: '/clients'
       fullPath: '/clients'
       preLoaderRoute: typeof ClientsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/daily-reports': {
+      id: '/daily-reports'
+      path: '/daily-reports'
+      fullPath: '/daily-reports'
+      preLoaderRoute: typeof DailyReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance': {
+      id: '/finance'
+      path: '/finance'
+      fullPath: '/finance'
+      preLoaderRoute: typeof FinanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/leads': {
@@ -151,11 +314,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeadsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/notifications': {
+      id: '/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof NotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reports': {
       id: '/reports'
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -172,17 +349,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TasksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/team': {
+      id: '/team'
+      path: '/team'
+      fullPath: '/team'
+      preLoaderRoute: typeof TeamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/$clientId': {
+      id: '/clients/$clientId'
+      path: '/$clientId'
+      fullPath: '/clients/$clientId'
+      preLoaderRoute: typeof ClientsClientIdRouteImport
+      parentRoute: typeof ClientsRoute
+    }
+    '/leads/$leadId': {
+      id: '/leads/$leadId'
+      path: '/$leadId'
+      fullPath: '/leads/$leadId'
+      preLoaderRoute: typeof LeadsLeadIdRouteImport
+      parentRoute: typeof LeadsRoute
+    }
   }
 }
+
+interface ClientsRouteChildren {
+  ClientsClientIdRoute: typeof ClientsClientIdRoute
+}
+
+const ClientsRouteChildren: ClientsRouteChildren = {
+  ClientsClientIdRoute: ClientsClientIdRoute,
+}
+
+const ClientsRouteWithChildren =
+  ClientsRoute._addFileChildren(ClientsRouteChildren)
+
+interface LeadsRouteChildren {
+  LeadsLeadIdRoute: typeof LeadsLeadIdRoute
+}
+
+const LeadsRouteChildren: LeadsRouteChildren = {
+  LeadsLeadIdRoute: LeadsLeadIdRoute,
+}
+
+const LeadsRouteWithChildren = LeadsRoute._addFileChildren(LeadsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivitiesRoute: ActivitiesRoute,
-  ClientsRoute: ClientsRoute,
-  LeadsRoute: LeadsRoute,
+  ApprovalsRoute: ApprovalsRoute,
+  AuditLogsRoute: AuditLogsRoute,
+  ClientsRoute: ClientsRouteWithChildren,
+  DailyReportsRoute: DailyReportsRoute,
+  FinanceRoute: FinanceRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
+  LeadsRoute: LeadsRouteWithChildren,
+  NotificationsRoute: NotificationsRoute,
   ReportsRoute: ReportsRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
   TasksRoute: TasksRoute,
+  TeamRoute: TeamRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,79 +1,140 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import type { Session } from "@supabase/supabase-js";
+import { isSupabaseConfigured, supabase } from "./supabase";
+import type { Role } from "./permissions";
 
-export type Role = "Admin" | "Team Member";
+export type Profile = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: Role;
+  is_active: boolean;
+};
 
-export type User = { email: string; role: Role; name: string };
-
-const USERS: Array<User & { password: string }> = [
-  { email: "surya.blezex@gmail.com", name: "Surya", role: "Admin", password: "Blezex@admin" },
-  { email: "durga.blezex@gmail.com", name: "Durga", role: "Admin", password: "Blezex@admin" },
-  {
-    email: "hemalatha.blezex@gmail.com",
-    name: "Hemalatha",
-    role: "Team Member",
-    password: "Blezex@operations",
-  },
-  {
-    email: "team.blezex@gmail.com",
-    name: "Team",
-    role: "Team Member",
-    password: "Blezex@operations",
-  },
-];
-
-export const ALL_USERS: User[] = USERS.map(({ password: _password, ...u }) => u);
-
-const STORAGE_KEY = "blezex.crm.session";
+type Status = "loading" | "signed_out" | "no_profile" | "ready" | "error" | "unconfigured";
 
 type AuthValue = {
-  user: User | null;
-  ready: boolean;
+  status: Status;
+  session: Session | null;
+  profile: Profile | null;
+  role: Role | undefined;
   isAdmin: boolean;
-  login: (email: string, password: string) => boolean;
-  logout: () => void;
+  error: string | null;
+  signIn: (email: string, password: string) => Promise<string | null>;
+  signOut: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<string | null>;
+  updatePassword: (password: string) => Promise<string | null>;
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [status, setStatus] = useState<Status>(isSupabaseConfigured ? "loading" : "unconfigured");
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // The role ALWAYS comes from the profiles table (RLS: an inactive/unknown user gets no row).
+  const loadProfile = useCallback(async (s: Session | null) => {
+    if (!s) {
+      setProfile(null);
+      setStatus("signed_out");
+      return;
+    }
+    const { data, error: err } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, role, is_active")
+      .eq("id", s.user.id)
+      .maybeSingle();
+    if (err) {
+      setError(err.message);
+      setStatus("error");
+    } else if (!data) {
+      setProfile(null);
+      setStatus("no_profile"); // inactive, deactivated or not yet provisioned
+    } else {
+      setError(null);
+      setProfile(data as Profile);
+      setStatus("ready");
+    }
+  }, []);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as User;
-        const match = ALL_USERS.find((u) => u.email === parsed.email);
-        if (match) setUser(match);
-      }
-    } catch {
-      /* ignore */
-    }
-    setReady(true);
-  }, []);
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      setSession(data.session);
+      void loadProfile(data.session);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      // defer to avoid calling supabase inside the auth callback (SDK deadlock guidance)
+      setTimeout(() => void loadProfile(s), 0);
+    });
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [loadProfile]);
 
-  const login = useCallback((email: string, password: string) => {
-    const match = USERS.find(
-      (u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password,
-    );
-    if (!match) return false;
-    const { password: _password, ...safe } = match;
-    setUser(safe);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
-    return true;
+  const signIn = useCallback(async (email: string, password: string) => {
+    const { error: err } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    return err ? "Invalid email or password." : null; // deliberately generic: no account enumeration
   }, []);
-
-  const logout = useCallback(() => {
-    setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
   }, []);
+  const requestPasswordReset = useCallback(async (email: string) => {
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    return err && err.status !== 400 ? "Could not send the reset email. Try again shortly." : null;
+  }, []);
+  const updatePassword = useCallback(async (password: string) => {
+    const { error: err } = await supabase.auth.updateUser({ password });
+    return err ? err.message : null;
+  }, []);
+  const refreshProfile = useCallback(async () => loadProfile(session), [loadProfile, session]);
 
-  const value = useMemo(
-    () => ({ user, ready, isAdmin: user?.role === "Admin", login, logout }),
-    [user, ready, login, logout],
+  const value = useMemo<AuthValue>(
+    () => ({
+      status,
+      session,
+      profile,
+      role: profile?.role,
+      isAdmin: profile?.role === "admin",
+      error,
+      signIn,
+      signOut,
+      requestPasswordReset,
+      updatePassword,
+      refreshProfile,
+    }),
+    [
+      status,
+      session,
+      profile,
+      error,
+      signIn,
+      signOut,
+      requestPasswordReset,
+      updatePassword,
+      refreshProfile,
+    ],
   );
-
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -23,7 +23,7 @@ export type FieldDef = {
   name: string;
   label?: string;
   type?: "text" | "email" | "tel" | "number" | "date" | "textarea" | "select";
-  options?: readonly string[];
+  options?: readonly (string | { value: string; label: string })[];
   required?: boolean;
   full?: boolean;
   disabled?: boolean;
@@ -99,11 +99,14 @@ export function RecordDialog({
                       <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
                     </SelectTrigger>
                     <SelectContent>
-                      {(f.options ?? []).map((o) => (
-                        <SelectItem key={o} value={o}>
-                          {o}
-                        </SelectItem>
-                      ))}
+                      {(f.options ?? []).map((o) => {
+                        const opt = typeof o === "string" ? { value: o, label: o } : o;
+                        return (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 ) : (

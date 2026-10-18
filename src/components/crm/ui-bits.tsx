@@ -1,6 +1,47 @@
 import { cn } from "@/lib/utils";
-import { statusTone } from "@/lib/crm-schema";
 import type { ReactNode } from "react";
+
+export const statusTone = (v: string): "info" | "success" | "warning" | "danger" | "muted" => {
+  switch (v) {
+    case "won":
+    case "completed":
+    case "paid":
+    case "active":
+    case "approved":
+    case "accepted":
+      return "success";
+    case "lost":
+    case "rejected":
+    case "cancelled":
+    case "churned":
+    case "failed":
+      return "danger";
+    case "negotiation":
+    case "proposal_sent":
+    case "nurture":
+    case "partially_paid":
+    case "waiting_for_client":
+    case "renewal_due":
+    case "in_progress":
+    case "pending":
+    case "paused":
+    case "sent":
+      return "warning";
+    case "new":
+    case "researching":
+    case "qualified":
+    case "contacted":
+    case "interested":
+    case "meeting_scheduled":
+    case "onboarding":
+    case "maintenance":
+    case "todo":
+    case "issued":
+      return "info";
+    default:
+      return "muted";
+  }
+};
 
 const toneClass: Record<string, string> = {
   success: "bg-success/12 text-success border-success/25",
@@ -20,26 +61,26 @@ export function StatusPill({ value, className }: { value: string; className?: st
         className,
       )}
     >
-      {value}
+      {value.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())}
     </span>
   );
 }
 
 export function PriorityPill({ value }: { value: string }) {
   const map: Record<string, string> = {
-    High: "bg-destructive/12 text-destructive border-destructive/25",
-    Medium: "bg-warning/15 text-warning border-warning/30",
-    Low: "bg-muted text-muted-foreground border-border",
+    high: "bg-destructive/12 text-destructive border-destructive/25",
+    medium: "bg-warning/15 text-warning border-warning/30",
+    low: "bg-muted text-muted-foreground border-border",
   };
   if (!value) return <span className="text-muted-foreground">—</span>;
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
-        map[value] ?? map["Low"],
+        map[value] ?? map["low"],
       )}
     >
-      {value}
+      {value.charAt(0).toUpperCase() + value.slice(1)}
     </span>
   );
 }
@@ -120,4 +161,33 @@ export function SectionCard({
 
 export function EmptyState({ message }: { message: string }) {
   return <p className="py-8 text-center text-sm text-muted-foreground">{message}</p>;
+}
+
+export function LoadingBlock({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-2" role="status" aria-label="Loading">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-9 animate-pulse rounded-md bg-muted" />
+      ))}
+    </div>
+  );
+}
+
+export function ErrorBlock({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
+    >
+      <p className="font-medium">Couldn&apos;t load this data.</p>
+      <p className="mt-1 opacity-90">
+        {error instanceof Error ? error.message : "Unexpected error"}
+      </p>
+      {onRetry ? (
+        <button onClick={onRetry} className="mt-2 text-xs font-medium underline">
+          Try again
+        </button>
+      ) : null}
+    </div>
+  );
 }

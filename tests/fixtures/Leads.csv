@@ -1,0 +1,6 @@
+Lead ID,Company Name,Contact Person,Phone Number,Email Address,Service Requirement,Lead Source,Assigned To,Priority,Status,Last Follow-up Date,Next Follow-up Date,Expected Deal Value,Probability %,Expected Closing Date,Notes,Created By,Created Date,Last Updated By,Last Updated Date
+LD-0001,Acme Ltd,Jo Acme,9999900001,jo@acme.test,SEO,Referral,emp1@blezex.test,High,Negotiation,2026-01-10,15/02/2026,"₹50,000",60,2026-03-01,"Wants a call, ASAP",emp1@blezex.test,2026-01-02,,
+LD-0002,Beta Corp,Bea,,not-an-email,Unknown Service,Cold Call,Ghost Person,Urgent,Converted Client,,,80000,,,,emp1@blezex.test,32/13/2026,,
+LD-0002,Beta Corp (dup),Bea,,,,,,,New Lead,,,,,,,,,,
+LD-0003,Gamma,,,,,,emp2@blezex.test,Low,Lost,,,,,,,,,,
+,Missing Id Co,,,,,,,,New Lead,,,,,,,,,,

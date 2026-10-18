@@ -1,0 +1,25 @@
+# Supabase CLI configuration for local development (`supabase start`). Hosted-project auth settings
+# (disable signups, redirect URLs) must be applied in the dashboard — see docs/deployment.md.
+project_id = "blezex-connect"
+
+[api]
+port = 54321
+schemas = ["public", "graphql_public"]   # `app` schema is deliberately NOT exposed
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/reset-password"]
+enable_signup = false                    # no public self-registration
+enable_anonymous_sign_ins = false
+minimum_password_length = 10
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+
+[auth.email]
+enable_signup = false
+enable_confirmations = true
+double_confirm_changes = true

@@ -30,3 +30,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment & deploy artifacts
+.env
+.env.*
+!.env.example
+.netlify
