@@ -185,9 +185,12 @@ export function useLead(id: string) {
           version: number;
           title: string;
           amount: number;
+          currency: string;
           status: string;
           sent_at: string | null;
           followup_due_at: string | null;
+          valid_until: string | null;
+          notes: string | null;
         }[],
         qualification: unwrap(qual) as { score: number; missing: string[] },
       };
@@ -498,11 +501,35 @@ export function useDashboard(from: string, to: string, scope: "visible" | "mine"
       rpc<DashboardSummary>("dashboard_summary", { p_from: from, p_to: to, p_scope: scope }),
   });
 }
+export type DashboardHome = {
+  summary: DashboardSummary;
+  targets: { count: number; avg_pct: number | null };
+  /** null in the own ("mine") view */
+  attendance: {
+    people: number;
+    present: number;
+    late: number;
+    absent: number;
+    on_leave: number;
+    checked_in: number;
+    missing_checkout: number;
+    pending_leave: number;
+    pending_corrections: number;
+  } | null;
+};
+/** Everything above the fold in ONE round trip (dashboard_home composes the existing reporting functions). */
+export function useDashboardHome(from: string, to: string, scope: "visible" | "mine") {
+  return useQuery({
+    queryKey: ["dashboard", "home", from, to, scope],
+    queryFn: () => rpc<DashboardHome>("dashboard_home", { p_from: from, p_to: to, p_scope: scope }),
+  });
+}
 export const useReport = <T>(name: string, args: Record<string, unknown>, enabled = true) =>
   useQuery({ queryKey: ["report", name, args], enabled, queryFn: () => rpc<T[]>(name, args) });
-export const useActionItems = () =>
+export const useActionItems = (enabled = true) =>
   useQuery({
     queryKey: ["actions"],
+    enabled,
     queryFn: () =>
       rpc<
         {

@@ -19,7 +19,11 @@ export type Profile = {
   is_active: boolean;
 };
 
-type Status = "loading" | "signed_out" | "no_profile" | "ready" | "error" | "unconfigured";
+type Status =
+  "loading" | "signed_out" | "mfa_required" | "no_profile" | "ready" | "error" | "unconfigured";
+
+/** Sign out after this long without any interaction. */
+const IDLE_MINUTES = 30;
 
 type AuthValue = {
   status: Status;
@@ -32,6 +36,8 @@ type AuthValue = {
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<string | null>;
   updatePassword: (password: string) => Promise<string | null>;
+  /** Second step of sign-in for users with an authenticator app. */
+  completeMfa: (code: string) => Promise<string | null>;
   refreshProfile: () => Promise<void>;
 };
 
@@ -48,6 +54,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!s) {
       setProfile(null);
       setStatus("signed_out");
+      return;
+    }
+    // Password-only (aal1) session for a user who has an authenticator: the database treats it as nobody,
+    // so ask for the code before touching any data.
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal && aal.nextLevel === "aal2" && aal.currentLevel !== "aal2") {
+      setProfile(null);
+      setStatus("mfa_required");
       return;
     }
     const { data, error: err } = await supabase
@@ -87,6 +101,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [loadProfile]);
 
+  // Idle timeout: any interaction restarts the clock; at expiry the session is closed.
+  useEffect(() => {
+    if (status !== "ready") return;
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void supabase.auth.signOut();
+      }, IDLE_MINUTES * 60_000);
+    };
+    const events = ["mousedown", "keydown", "touchstart", "scroll"] as const;
+    let last = 0;
+    const onActivity = () => {
+      const now = Date.now();
+      if (now - last > 5_000) {
+        last = now;
+        arm();
+      }
+    };
+    arm();
+    for (const e of events) window.addEventListener(e, onActivity, { passive: true });
+    return () => {
+      clearTimeout(timer);
+      for (const e of events) window.removeEventListener(e, onActivity);
+    };
+  }, [status]);
+
   const signIn = useCallback(async (email: string, password: string) => {
     const { error: err } = await supabase.auth.signInWithPassword({
       email: email.trim(),
@@ -104,9 +145,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return err && err.status !== 400 ? "Could not send the reset email. Try again shortly." : null;
   }, []);
   const updatePassword = useCallback(async (password: string) => {
-    const { error: err } = await supabase.auth.updateUser({ password });
+    const { error: err } = await supabase.auth.updateUser({
+      password,
+      data: { temp_password: false },
+    });
     return err ? err.message : null;
   }, []);
+  const completeMfa = useCallback(
+    async (code: string) => {
+      const { data: f } = await supabase.auth.mfa.listFactors();
+      const factor = f?.totp.find((x) => x.status === "verified");
+      if (!factor) return "No authenticator is set up for this account.";
+      const { error: err } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: factor.id,
+        code: code.trim(),
+      });
+      if (err) return "That code didn't work. Try the newest one.";
+      const { data } = await supabase.auth.getSession();
+      setSession(data.session);
+      await loadProfile(data.session);
+      return null;
+    },
+    [loadProfile],
+  );
   const refreshProfile = useCallback(async () => loadProfile(session), [loadProfile, session]);
 
   const value = useMemo<AuthValue>(
@@ -121,6 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       requestPasswordReset,
       updatePassword,
+      completeMfa,
       refreshProfile,
     }),
     [
@@ -132,6 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       requestPasswordReset,
       updatePassword,
+      completeMfa,
       refreshProfile,
     ],
   );

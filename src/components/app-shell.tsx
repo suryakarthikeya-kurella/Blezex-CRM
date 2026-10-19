@@ -19,6 +19,8 @@ import {
   Users,
   UsersRound,
   Inbox,
+  Clock,
+  CalendarDays,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -29,6 +31,9 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { LoginScreen, Brand } from "@/components/login-screen";
+import { MfaChallenge } from "@/components/mfa-challenge";
+import { AccountDialog } from "@/components/account-dialog";
+import { GlobalSearch } from "@/components/global-search";
 import { cn } from "@/lib/utils";
 
 const ICONS: Record<string, typeof Users> = {
@@ -43,6 +48,8 @@ const ICONS: Record<string, typeof Users> = {
   finance: Receipt,
   approval: Inbox,
   audit: FileText,
+  attendance: Clock,
+  calendar: CalendarDays,
   settings: SettingsIcon,
 };
 
@@ -210,8 +217,9 @@ function FullScreenMessage({
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { status, profile, role, error, signOut, refreshProfile } = useAuth();
+  const { status, session, profile, role, error, signOut, refreshProfile } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
 
   if (status === "unconfigured")
@@ -223,6 +231,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   if (status === "loading") return <div className="min-h-screen bg-background" aria-busy="true" />;
   if (status === "signed_out") return <LoginScreen />;
+  if (status === "mfa_required") return <MfaChallenge />;
   if (status === "no_profile")
     return (
       <FullScreenMessage
@@ -265,12 +274,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             </SheetTrigger>
             <SheetContent side="left" className="w-64 bg-sidebar p-4">
               <SheetTitle className="mb-6 font-display text-sidebar-foreground">
-                BlezeX Connect
+                Bleze<span className="text-primary">X</span> Connect
               </SheetTitle>
               <NavLinks onNavigate={() => setMobileOpen(false)} />
             </SheetContent>
           </Sheet>
           <div className="ml-auto flex items-center gap-2">
+            <GlobalSearch />
             <NotificationBell />
             <div className="hidden text-right sm:block">
               <p className="text-sm leading-tight font-medium">
@@ -280,15 +290,27 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {role ? ROLE_LABEL[role] : ""}
               </span>
             </div>
+            <Button variant="outline" size="sm" onClick={() => setAccountOpen(true)}>
+              Account
+            </Button>
             <Button variant="outline" size="sm" onClick={() => void signOut()}>
               <LogOut className="size-4" /> Logout
             </Button>
           </div>
         </header>
+        {session?.user.user_metadata?.["temp_password"] === true ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-warning/30 bg-warning/15 px-4 py-2 text-sm md:px-6">
+            <span>You&apos;re using a temporary password. Please choose your own.</span>
+            <Button size="sm" variant="outline" onClick={() => setAccountOpen(true)}>
+              Change password
+            </Button>
+          </div>
+        ) : null}
         <main className="flex-1 p-4 md:p-6">
           {routeAllowed(role, path) ? children : <AccessDenied />}
         </main>
       </div>
+      <AccountDialog open={accountOpen} onOpenChange={setAccountOpen} />
     </div>
   );
 }

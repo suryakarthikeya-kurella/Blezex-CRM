@@ -39,11 +39,15 @@ import { supabase, unwrap } from "@/lib/supabase";
 import { useDirectory, useReport } from "@/lib/api";
 import {
   changeUserRole,
+  deleteUser,
   inviteUser,
+  offboardUser,
+  resetUserMfa,
   sendPasswordReset,
   setUserActive,
 } from "@/lib/admin.functions";
 import { ROLE_LABEL, type Role } from "@/lib/permissions";
+import { TodayCell, useTodayAttendance } from "@/components/attendance/today-cell";
 import { num } from "@/lib/format";
 
 export const Route = createFileRoute("/team")({
@@ -78,6 +82,7 @@ function AdminTeam() {
   const qc = useQueryClient();
   const { profile } = useAuth();
   const userName = useUserName();
+  const attendance = useTodayAttendance();
   const inv = () => {
     for (const k of ["people", "teams", "directory"]) void qc.invalidateQueries({ queryKey: [k] });
   };
@@ -104,6 +109,8 @@ function AdminTeam() {
   const [teamDlg, setTeamDlg] = useState(false);
   const [memberDlg, setMemberDlg] = useState(false);
   const [targetDlg, setTargetDlg] = useState(false);
+  const [del, setDel] = useState<P | null>(null);
+  const [off, setOff] = useState<P | null>(null);
   const [confirm, setConfirm] = useState<{ p: P; active: boolean } | null>(null);
   const fail = (e: Error) => toast.error(e.message);
   const doInvite = useMutation({
@@ -112,12 +119,13 @@ function AdminTeam() {
         data: {
           email: v["email"] ?? "",
           fullName: v["full_name"] ?? "",
+          password: v["password"] ?? "",
           role: (v["role"] || "bds_employee") as Role,
           ...(v["team_id"] ? { teamId: v["team_id"] } : {}),
         },
       }),
     onSuccess: () => {
-      toast.success("Invitation sent");
+      toast.success("User created. Share the temporary password with them.");
       setInvite(false);
       inv();
     },
@@ -138,6 +146,38 @@ function AdminTeam() {
       setConfirm(null);
       inv();
     },
+    onError: fail,
+  });
+  const doDelete = useMutation({
+    mutationFn: (userId: string) => deleteUser({ data: { userId } }),
+    onSuccess: () => {
+      toast.success("User deleted");
+      setDel(null);
+      inv();
+    },
+    onError: (e: Error) => {
+      setDel(null);
+      fail(e);
+    },
+  });
+  const doOffboard = useMutation({
+    mutationFn: (a: { userId: string; handoverTo: string }) => offboardUser({ data: a }),
+    onSuccess: (r) => {
+      toast.success(
+        `Offboarded. Handed over ${r.leads} lead(s), ${r.tasks} task(s), ${r.clients} client(s).`,
+      );
+      setOff(null);
+      inv();
+    },
+    onError: (e: Error) => {
+      setOff(null);
+      fail(e);
+    },
+  });
+  const doResetMfa = useMutation({
+    mutationFn: (userId: string) => resetUserMfa({ data: { userId } }),
+    onSuccess: (r) =>
+      toast.success(r.removed ? "Two-step verification reset" : "That user had none enabled"),
     onError: fail,
   });
   const doReset = useMutation({
@@ -215,7 +255,7 @@ function AdminTeam() {
         subtitle="Accounts, roles, teams and targets (admin only)"
         actions={
           <Button size="sm" onClick={() => setInvite(true)}>
-            <UserPlus className="size-4" /> Invite user
+            <UserPlus className="size-4" /> Add user
           </Button>
         }
       />
@@ -239,6 +279,7 @@ function AdminTeam() {
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Today's attendance</TableHead>
                     <TableHead />
                   </TableRow>
                 </TableHeader>
@@ -260,6 +301,9 @@ function AdminTeam() {
                       <TableCell>
                         <StatusPill value={p.is_active ? "active" : "paused"} />
                       </TableCell>
+                      <TableCell>
+                        <TodayCell row={attendance.byUser.get(p.id)} />
+                      </TableCell>
                       <TableCell className="space-x-1 text-right">
                         {p.id !== profile?.id ? (
                           <Button
@@ -273,6 +317,24 @@ function AdminTeam() {
                         <Button size="sm" variant="ghost" onClick={() => doReset.mutate(p.email)}>
                           Reset password
                         </Button>
+                        <Button size="sm" variant="ghost" onClick={() => doResetMfa.mutate(p.id)}>
+                          Reset 2FA
+                        </Button>
+                        {p.id !== profile?.id && p.is_active ? (
+                          <Button size="sm" variant="ghost" onClick={() => setOff(p)}>
+                            Offboard
+                          </Button>
+                        ) : null}
+                        {p.id !== profile?.id ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive"
+                            onClick={() => setDel(p)}
+                          >
+                            Delete
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -329,13 +391,14 @@ function AdminTeam() {
       <RecordDialog
         open={invite}
         onOpenChange={setInvite}
-        title="Invite user"
-        description="They receive an email to set their password. There is no public sign-up."
+        title="Add user"
+        description="Set a temporary password and share it with them. They can sign in with it and reset it later."
         submitting={doInvite.isPending}
         initial={{ role: "bds_employee" }}
         fields={[
           { name: "full_name", required: true },
           { name: "email", type: "email", required: true },
+          { name: "password", label: "Temporary password (min 10 chars)", required: true },
           { name: "role", type: "select", options: ROLES },
           {
             name: "team_id",
@@ -435,6 +498,49 @@ function AdminTeam() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <RecordDialog
+        open={!!off}
+        onOpenChange={(o) => !o && setOff(null)}
+        title={`Offboard ${off?.full_name ?? ""}`}
+        description="Open leads, open tasks and client relationships move to the person you choose, team memberships end, and the account is deactivated and blocked. Closed deals keep their history."
+        submitting={doOffboard.isPending}
+        fields={[
+          {
+            name: "handover_to",
+            label: "Hand work over to",
+            type: "select",
+            required: true,
+            options: (people.data ?? [])
+              .filter((x) => x.is_active && x.id !== off?.id)
+              .map((x) => ({
+                value: x.id,
+                label: `${x.full_name || x.email} (${ROLE_LABEL[x.role]})`,
+              })),
+          },
+        ]}
+        onSubmit={(v) =>
+          off &&
+          v["handover_to"] &&
+          doOffboard.mutate({ userId: off.id, handoverTo: v["handover_to"] })
+        }
+      />
+      <AlertDialog open={!!del} onOpenChange={(o) => !o && setDel(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {del?.full_name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the account and cannot be undone. It only works for users
+              with no records; otherwise deactivate them.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => del && doDelete.mutate(del.id)}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -475,6 +581,7 @@ function MentorTeam() {
       }[],
   });
   const userName = useUserName();
+  const attendance = useTodayAttendance();
   const [target, setTarget] = useState<{ id: string; name: string } | null>(null);
   const add = useMutation({
     mutationFn: async (v: Record<string, string>) =>
@@ -508,6 +615,7 @@ function MentorTeam() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Today's attendance</TableHead>
                 <TableHead className="text-right">Active leads</TableHead>
                 <TableHead className="text-right">Outreach</TableHead>
                 <TableHead className="text-right">Meetings</TableHead>
@@ -520,6 +628,9 @@ function MentorTeam() {
               {rows.map((e) => (
                 <TableRow key={e.user_id}>
                   <TableCell className="font-medium">{e.full_name}</TableCell>
+                  <TableCell>
+                    <TodayCell row={attendance.byUser.get(e.user_id)} />
+                  </TableCell>
                   <TableCell className="text-right">{e.active_leads}</TableCell>
                   <TableCell className="text-right">{num(e.outreach)}</TableCell>
                   <TableCell className="text-right">{num(e.meetings)}</TableCell>

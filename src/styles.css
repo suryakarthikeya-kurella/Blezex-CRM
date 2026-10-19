@@ -53,91 +53,95 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --shadow-card: 0 1px 2px 0 oklch(0.2 0.04 265 / 0.06), 0 1px 3px 0 oklch(0.2 0.04 265 / 0.05);
-  --shadow-float: 0 10px 30px -12px oklch(0.2 0.04 265 / 0.22);
+  --shadow-card: 0 1px 2px 0 rgb(17 17 17 / 0.06), 0 1px 3px 0 rgb(17 17 17 / 0.05);
+  --shadow-float: 0 10px 30px -12px rgb(17 17 17 / 0.22);
 }
 
 :root {
+  /* BlezeX brand: accent #FF4D1C, ink #111111, paper #F7F6F2, hairline #E7E5DF, muted #616161, body #333333 */
   --radius: 0.75rem;
-  --background: oklch(0.984 0.003 247.9);
-  --foreground: oklch(0.21 0.04 265.7);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.04 265.7);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.04 265.7);
-  --primary: oklch(0.546 0.215 262.9);
-  --primary-foreground: oklch(0.99 0.002 247.9);
-  --secondary: oklch(0.968 0.007 247.9);
-  --secondary-foreground: oklch(0.29 0.04 260);
-  --muted: oklch(0.968 0.007 247.9);
-  --muted-foreground: oklch(0.554 0.046 257.4);
-  --accent: oklch(0.951 0.023 255);
-  --accent-foreground: oklch(0.42 0.16 263);
-  --destructive: oklch(0.637 0.237 25.3);
-  --destructive-foreground: oklch(0.99 0.002 247.9);
+  --background: #f7f6f2;
+  --foreground: #111111;
+  --body-text: #333333;
+  --card: #ffffff;
+  --card-foreground: #111111;
+  --popover: #ffffff;
+  --popover-foreground: #111111;
+  --primary: #ff4d1c;
+  /* ink on the accent is 5.7:1; white on it would be 3.3:1 (fails AA for small text) */
+  --primary-foreground: #111111;
+  --secondary: #f7f6f2;
+  --secondary-foreground: #333333;
+  --muted: #f7f6f2;
+  --muted-foreground: #616161;
+  --accent: #ffede8;
+  --accent-foreground: #b3340f;
+  --destructive: #c62828;
+  --destructive-foreground: #ffffff;
   --success: oklch(0.723 0.192 149.6);
   --success-foreground: oklch(0.99 0.002 247.9);
   --warning: oklch(0.769 0.166 70.1);
   --warning-foreground: oklch(0.24 0.05 70);
   --info: oklch(0.546 0.215 262.9);
   --info-foreground: oklch(0.99 0.002 247.9);
-  --border: oklch(0.923 0.013 255.5);
-  --input: oklch(0.923 0.013 255.5);
-  --ring: oklch(0.546 0.215 262.9);
-  --chart-1: oklch(0.546 0.215 262.9);
-  --chart-2: oklch(0.723 0.192 149.6);
-  --chart-3: oklch(0.769 0.166 70.1);
-  --chart-4: oklch(0.637 0.237 25.3);
-  --chart-5: oklch(0.64 0.12 210);
-  --sidebar: oklch(0.24 0.05 264);
-  --sidebar-foreground: oklch(0.92 0.01 255);
-  --sidebar-primary: oklch(0.546 0.215 262.9);
-  --sidebar-primary-foreground: oklch(0.99 0.002 247.9);
-  --sidebar-accent: oklch(0.3 0.05 264);
-  --sidebar-accent-foreground: oklch(0.98 0.003 247.9);
+  --border: #e7e5df;
+  --input: #e7e5df;
+  --ring: #ff4d1c;
+  --chart-1: #ff4d1c;
+  --chart-2: oklch(0.546 0.215 262.9);
+  --chart-3: oklch(0.723 0.192 149.6);
+  --chart-4: oklch(0.769 0.166 70.1);
+  --chart-5: #616161;
+  --sidebar: #111111;
+  --sidebar-foreground: #e7e5df;
+  --sidebar-primary: #ff4d1c;
+  --sidebar-primary-foreground: #111111;
+  --sidebar-accent: #262626;
+  --sidebar-accent-foreground: #f7f6f2;
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.546 0.215 262.9);
+  --sidebar-ring: #ff4d1c;
 }
 
 .dark {
-  --background: oklch(0.18 0.03 265);
-  --foreground: oklch(0.98 0.003 247.9);
-  --card: oklch(0.23 0.035 265);
-  --card-foreground: oklch(0.98 0.003 247.9);
-  --popover: oklch(0.23 0.035 265);
-  --popover-foreground: oklch(0.98 0.003 247.9);
-  --primary: oklch(0.62 0.19 262.9);
-  --primary-foreground: oklch(0.99 0.002 247.9);
-  --secondary: oklch(0.28 0.04 260);
-  --secondary-foreground: oklch(0.98 0.003 247.9);
-  --muted: oklch(0.28 0.04 260);
-  --muted-foreground: oklch(0.7 0.04 256.8);
-  --accent: oklch(0.31 0.05 262);
-  --accent-foreground: oklch(0.98 0.003 247.9);
-  --destructive: oklch(0.65 0.21 25.3);
-  --destructive-foreground: oklch(0.99 0.002 247.9);
+  --background: #111111;
+  --foreground: #f7f6f2;
+  --body-text: #e7e5df;
+  --card: #1a1a1a;
+  --card-foreground: #f7f6f2;
+  --popover: #1a1a1a;
+  --popover-foreground: #f7f6f2;
+  --primary: #ff4d1c;
+  --primary-foreground: #111111;
+  --secondary: #262626;
+  --secondary-foreground: #f7f6f2;
+  --muted: #262626;
+  --muted-foreground: #a3a3a3;
+  --accent: #3a1d14;
+  --accent-foreground: #ff8a68;
+  --destructive: #ef5350;
+  --destructive-foreground: #111111;
   --success: oklch(0.7 0.17 149.6);
   --success-foreground: oklch(0.15 0.03 150);
   --warning: oklch(0.79 0.15 70.1);
   --warning-foreground: oklch(0.2 0.04 70);
-  --info: oklch(0.62 0.19 262.9);
-  --info-foreground: oklch(0.99 0.002 247.9);
+  --info: oklch(0.68 0.17 262.9);
+  --info-foreground: oklch(0.15 0.03 262);
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.62 0.19 262.9);
-  --chart-1: oklch(0.62 0.19 262.9);
-  --chart-2: oklch(0.7 0.17 149.6);
-  --chart-3: oklch(0.79 0.15 70.1);
-  --chart-4: oklch(0.65 0.21 25.3);
-  --chart-5: oklch(0.68 0.11 210);
-  --sidebar: oklch(0.2 0.04 264);
-  --sidebar-foreground: oklch(0.92 0.01 255);
-  --sidebar-primary: oklch(0.62 0.19 262.9);
-  --sidebar-primary-foreground: oklch(0.99 0.002 247.9);
-  --sidebar-accent: oklch(0.28 0.045 264);
-  --sidebar-accent-foreground: oklch(0.98 0.003 247.9);
+  --ring: #ff4d1c;
+  --chart-1: #ff4d1c;
+  --chart-2: oklch(0.68 0.17 262.9);
+  --chart-3: oklch(0.7 0.17 149.6);
+  --chart-4: oklch(0.79 0.15 70.1);
+  --chart-5: #a3a3a3;
+  --sidebar: #0b0b0b;
+  --sidebar-foreground: #e7e5df;
+  --sidebar-primary: #ff4d1c;
+  --sidebar-primary-foreground: #111111;
+  --sidebar-accent: #262626;
+  --sidebar-accent-foreground: #f7f6f2;
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.62 0.19 262.9);
+  --sidebar-ring: #ff4d1c;
 }
 
 @layer base {
@@ -147,9 +151,14 @@
 
   body {
     background-color: var(--color-background);
-    color: var(--color-foreground);
+    color: var(--body-text);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* dark sidebar surfaces (nav, login panel, mobile menu) flip the foreground so headings stay readable */
+  .bg-sidebar {
+    --foreground: var(--sidebar-foreground);
   }
 
   h1,
@@ -157,6 +166,7 @@
   h3,
   h4 {
     font-family: var(--font-display);
+    color: var(--foreground);
     letter-spacing: -0.015em;
   }
 }

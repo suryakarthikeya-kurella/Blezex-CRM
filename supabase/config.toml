@@ -8,11 +8,11 @@ schemas = ["public", "graphql_public"]   # `app` schema is deliberately NOT expo
 
 [db]
 port = 54322
-major_version = 15
+major_version = 17
 
 [auth]
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000/reset-password"]
+site_url = "http://localhost:8080"
+additional_redirect_urls = ["http://localhost:8080/reset-password", "http://localhost:3000/reset-password"]
 enable_signup = false                    # no public self-registration
 enable_anonymous_sign_ins = false
 minimum_password_length = 10
@@ -20,6 +20,8 @@ jwt_expiry = 3600
 enable_refresh_token_rotation = true
 
 [auth.email]
-enable_signup = false
+# In the CLI this key switches the whole email/password provider on or off (not just self-signup).
+# It must stay true or nobody can sign in. Public registration is blocked by [auth] enable_signup = false.
+enable_signup = true
 enable_confirmations = true
 double_confirm_changes = true

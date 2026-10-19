@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActivitiesRouteImport } from './routes/activities'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as AuditLogsRouteImport } from './routes/audit-logs'
+import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as ClientsRouteImport } from './routes/clients'
 import { Route as DailyReportsRouteImport } from './routes/daily-reports'
 import { Route as FinanceRouteImport } from './routes/finance'
@@ -45,6 +46,11 @@ const ApprovalsRoute = ApprovalsRouteImport.update({
 const AuditLogsRoute = AuditLogsRouteImport.update({
   id: '/audit-logs',
   path: '/audit-logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClientsRoute = ClientsRouteImport.update({
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/activities': typeof ActivitiesRoute
   '/approvals': typeof ApprovalsRoute
   '/audit-logs': typeof AuditLogsRoute
+  '/calendar': typeof CalendarRoute
   '/clients': typeof ClientsRouteWithChildren
   '/daily-reports': typeof DailyReportsRoute
   '/finance': typeof FinanceRoute
@@ -137,6 +144,7 @@ export interface FileRoutesByTo {
   '/activities': typeof ActivitiesRoute
   '/approvals': typeof ApprovalsRoute
   '/audit-logs': typeof AuditLogsRoute
+  '/calendar': typeof CalendarRoute
   '/clients': typeof ClientsRouteWithChildren
   '/daily-reports': typeof DailyReportsRoute
   '/finance': typeof FinanceRoute
@@ -157,6 +165,7 @@ export interface FileRoutesById {
   '/activities': typeof ActivitiesRoute
   '/approvals': typeof ApprovalsRoute
   '/audit-logs': typeof AuditLogsRoute
+  '/calendar': typeof CalendarRoute
   '/clients': typeof ClientsRouteWithChildren
   '/daily-reports': typeof DailyReportsRoute
   '/finance': typeof FinanceRoute
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
     | '/activities'
     | '/approvals'
     | '/audit-logs'
+    | '/calendar'
     | '/clients'
     | '/daily-reports'
     | '/finance'
@@ -197,6 +207,7 @@ export interface FileRouteTypes {
     | '/activities'
     | '/approvals'
     | '/audit-logs'
+    | '/calendar'
     | '/clients'
     | '/daily-reports'
     | '/finance'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/activities'
     | '/approvals'
     | '/audit-logs'
+    | '/calendar'
     | '/clients'
     | '/daily-reports'
     | '/finance'
@@ -236,6 +248,7 @@ export interface RootRouteChildren {
   ActivitiesRoute: typeof ActivitiesRoute
   ApprovalsRoute: typeof ApprovalsRoute
   AuditLogsRoute: typeof AuditLogsRoute
+  CalendarRoute: typeof CalendarRoute
   ClientsRoute: typeof ClientsRouteWithChildren
   DailyReportsRoute: typeof DailyReportsRoute
   FinanceRoute: typeof FinanceRoute
@@ -277,6 +290,13 @@ declare module '@tanstack/react-router' {
       path: '/audit-logs'
       fullPath: '/audit-logs'
       preLoaderRoute: typeof AuditLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/clients': {
@@ -399,6 +419,7 @@ const rootRouteChildren: RootRouteChildren = {
   ActivitiesRoute: ActivitiesRoute,
   ApprovalsRoute: ApprovalsRoute,
   AuditLogsRoute: AuditLogsRoute,
+  CalendarRoute: CalendarRoute,
   ClientsRoute: ClientsRouteWithChildren,
   DailyReportsRoute: DailyReportsRoute,
   FinanceRoute: FinanceRoute,

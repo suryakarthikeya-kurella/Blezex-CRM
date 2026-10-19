@@ -17,8 +17,14 @@
 | Invoices / payments / revenue | ✔ | ✘ | ✘ | admin-only policies; `report_revenue()` raises |
 | Targets | set: ✔ | view team | view own | `user_targets` policies |
 | Daily reports | all | team | own (metrics derived by trigger) | policies + `daily_reports_before` |
-| Audit log | all | team work entries | own work entries | `audit_select`; append-only triggers |
+| Audit history (tab on the Attendance page, route `/audit-logs`) | all | team work entries | own work entries | `audit_select`; append-only triggers |
+| Attendance & hours | all mentors/employees; edit any day (reason required); decide corrections | own + assigned **employees** (never other mentors, even co-mentors) | own | `attendance_*` policies via `can_see_attendance()`; writes only through `attendance_*` RPCs |
+| Check-in / out / breaks | ✘ (admins have no attendance) | own | own | server clock in `attendance_check_in()` etc. |
+| Leave requests (tab on the Attendance page) | see all; decide **mentors'** requests, and employees' only when they have no active mentor | decide requests of their assigned **employees**; apply (decided by admin) | apply; see/cancel own | `leave_requests_select` via `can_see_attendance()`; `app.leave_approvers()`/`can_decide_leave()`; writes only via `request_leave`/`decide_leave_request`/`cancel_leave` |
+| Attendance policy | edit | read | read | `app_settings` key `attendance.policy` (validated by trigger) |
 | Approvals | decide all | decide `mentor_support`/`escalation` for team | request / cancel own | `decide_approval()` |
 | System settings / vocabularies | ✔ | read | read | admin-only write policies |
 
 Deactivated users: `app.me()` returns NULL ⇒ every policy denies, even with a still-valid JWT.
+
+**Added controls.** Two-step verification is optional per user and enforced in the database (aal2 required once a factor is verified); an admin can reset a lost factor (Team → Reset 2FA). Admins can offboard a user (reassign + deactivate + block). Leave: employee → assigned mentor, mentor → admin; an admin can decide an employee's request after 48 h. Files on leads/clients follow lead/client access; only the uploader or an admin can delete. Message templates: everyone reads active ones, admins manage. Sign-up is disabled on the hosted project; accounts are created by admins. Idle sessions end after 30 minutes.

@@ -23,6 +23,7 @@ import {
 import { useClients } from "@/lib/api";
 import { supabase, unwrap } from "@/lib/supabase";
 import { date, money } from "@/lib/format";
+import { printDocument } from "@/lib/print";
 
 export const Route = createFileRoute("/finance")({
   head: () => ({ meta: [{ title: "Invoices & payments — BlezeX Connect" }] }),
@@ -153,6 +154,26 @@ function Page() {
                     <StatusPill value={b.status} />
                   </TableCell>
                   <TableCell className="space-x-1 text-right">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        printDocument({
+                          title: `Invoice ${b.invoice_number}`,
+                          rows: [
+                            ["Client", clientName(b.client_id)],
+                            ["Status", b.status.replace(/_/g, " ")],
+                            ["Due date", date(b.due_date)],
+                            ["Total", money(b.total, b.currency)],
+                            ["Received", money(b.received, b.currency)],
+                            ["Balance due", money(b.balance, b.currency)],
+                          ],
+                          footer: `Generated ${new Date().toLocaleString("en-IN")}`,
+                        }) || toast.error("Allow pop-ups to print.")
+                      }
+                    >
+                      Print / PDF
+                    </Button>
                     {["issued", "partially_paid"].includes(b.status) ? (
                       <Button
                         size="sm"

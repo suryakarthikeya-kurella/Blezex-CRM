@@ -58,6 +58,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     roles: ["admin", "mentor", "bds_employee"],
   },
   { to: "/tasks", label: "Tasks", icon: "tasks", roles: ["admin", "mentor", "bds_employee"] },
+  {
+    to: "/calendar",
+    label: "Calendar",
+    icon: "calendar",
+    roles: ["admin", "mentor", "bds_employee"],
+  },
   { to: "/clients", label: "Clients", icon: "clients", roles: ["admin", "mentor", "bds_employee"] },
   {
     to: "/daily-reports",
@@ -76,8 +82,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   {
     to: "/audit-logs",
-    label: "Audit log",
-    icon: "audit",
+    label: "Attendance", // same route as the former Audit log; the audit history is a tab on this page
+    icon: "attendance",
     roles: ["admin", "mentor", "bds_employee"],
   },
   { to: "/settings", label: "Settings", icon: "settings", roles: ["admin"] },

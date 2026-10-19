@@ -5,3 +5,12 @@
 **Incident: suspected leak** — rotate service-role + publishable keys in Supabase, redeploy, review `audit_logs` (admin) for the window.
 **Stuck lead / bad data** — fix via the UI; for DB-level fixes use a migration (audit trigger records the actor as NULL/system for service-role changes).
 **Tests before release**: `npm run check` and `npm run test:db` (needs local Postgres; see README).
+
+
+## Backup and restore
+- **Backups:** Supabase takes daily backups (Pro plan: point-in-time recovery). Before any migration that rewrites data, take a manual backup in Dashboard → Database → Backups, or `supabase db dump --linked -f backup.sql` (schema) and `--data-only` for data. Store dumps outside the repo (they contain personal data).
+- **Restore drill (quarterly):** restore the latest backup into a throw-away project, point a local `.env.local` at it, sign in as an admin, and confirm leads, clients, invoices and attendance look right. Files live in Storage (bucket `attachments`); include them in the drill.
+- **Migrations:** never edit an applied migration; add a new one. `supabase db push --dry-run` first. Removed features are reversed by a new migration (see 0009 → 0010).
+- **Lost authenticator:** Team → Reset 2FA for the user, then they sign in and enrol again.
+- **Leaver:** Team → Offboard, choose who inherits open work. Use Delete only for accounts with no records.
+- **Auth settings** live in `supabase/config.toml`; preview with `supabase config diff`, apply with `supabase config push`.

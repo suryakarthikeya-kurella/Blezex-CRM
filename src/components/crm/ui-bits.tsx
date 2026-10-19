@@ -37,6 +37,7 @@ export const statusTone = (v: string): "info" | "success" | "warning" | "danger"
     case "maintenance":
     case "todo":
     case "issued":
+    case "on_leave":
       return "info";
     default:
       return "muted";

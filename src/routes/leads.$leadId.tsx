@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Archive, Pencil, Trophy, UserCog } from "lucide-react";
+import { ArrowLeft, Archive, Mail, Pencil, Trophy, UserCog } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell, AccessDenied } from "@/components/app-shell";
 import {
@@ -14,6 +14,9 @@ import {
 } from "@/components/crm/ui-bits";
 import { SelectBox, useUserName, userOptions } from "@/components/crm/controls";
 import { LeadFormDialog, formToPatch, leadToForm } from "@/components/crm/lead-form";
+import { EmailLink, PhoneLinks } from "@/components/crm/contact-links";
+import { AttachmentsPanel } from "@/components/crm/attachments-panel";
+import { SendMessageDialog } from "@/components/crm/send-message-dialog";
 import { RecordDialog } from "@/components/crm/record-dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,6 +46,7 @@ import {
 import { supabase, unwrap } from "@/lib/supabase";
 import { date, dateTime, label, money } from "@/lib/format";
 import { can } from "@/lib/permissions";
+import { printDocument } from "@/lib/print";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/leads/$leadId")({
@@ -99,6 +103,7 @@ function LeadDetail() {
   const [lostOpen, setLostOpen] = useState(false);
   const [lostReason, setLostReason] = useState("");
   const [actOpen, setActOpen] = useState(false);
+  const [msgOpen, setMsgOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [propOpen, setPropOpen] = useState(false);
   const [rid, setRid] = useState(() => crypto.randomUUID());
@@ -163,6 +168,11 @@ function LeadDetail() {
         subtitle={`${l.lead_number}${l.legacy_id ? ` · legacy ${l.legacy_id}` : ""} · ${l.contact_name ?? "no contact"}`}
         actions={
           <>
+            {(l.email || l.phone) && !l.archived_at ? (
+              <Button variant="outline" size="sm" onClick={() => setMsgOpen(true)}>
+                <Mail className="size-4" /> Message
+              </Button>
+            ) : null}
             {!l.archived_at && !l.converted_client_id ? (
               <Button variant="outline" size="sm" onClick={() => setEdit(true)}>
                 <Pencil className="size-4" /> Edit
@@ -246,9 +256,13 @@ function LeadDetail() {
               <dt className="text-muted-foreground">Service</dt>
               <dd>{cfg?.services.find((s) => s.id === l.service_id)?.name ?? "—"}</dd>
               <dt className="text-muted-foreground">Email</dt>
-              <dd className="break-all">{l.email ?? "—"}</dd>
+              <dd className="break-all">
+                <EmailLink email={l.email} />
+              </dd>
               <dt className="text-muted-foreground">Phone</dt>
-              <dd>{l.phone ?? "—"}</dd>
+              <dd>
+                <PhoneLinks phone={l.phone} />
+              </dd>
               <dt className="text-muted-foreground">Decision maker</dt>
               <dd>{l.decision_maker ?? "—"}</dd>
               <dt className="text-muted-foreground">Last contact</dt>
@@ -311,6 +325,7 @@ function LeadDetail() {
               <TabsTrigger value="timeline">Timeline</TabsTrigger>
               <TabsTrigger value="tasks">Tasks ({tasks.length})</TabsTrigger>
               <TabsTrigger value="proposals">Proposals ({proposals.length})</TabsTrigger>
+              <TabsTrigger value="files">Files</TabsTrigger>
               <TabsTrigger value="owners">Ownership</TabsTrigger>
             </TabsList>
             <TabsContent value="timeline" className="mt-3">
@@ -445,11 +460,34 @@ function LeadDetail() {
                       <div className="text-right">
                         <StatusPill value={p.status} />
                         <p className="mt-1 text-xs">{money(p.amount)}</p>
+                        <button
+                          type="button"
+                          className="mt-1 text-xs text-primary hover:underline"
+                          onClick={() =>
+                            printDocument({
+                              title: `Proposal ${p.proposal_number} v${p.version}`,
+                              subtitle: `Prepared for ${l.company_name}`,
+                              rows: [
+                                ["Title", p.title],
+                                ["Contact", l.contact_name ?? "—"],
+                                ["Amount", money(p.amount, p.currency)],
+                                ["Valid until", p.valid_until ? date(p.valid_until) : "—"],
+                                ["Notes", p.notes ?? "—"],
+                              ],
+                              footer: `Prepared by ${userName(l.owner_id)} · ${new Date().toLocaleDateString("en-IN")}`,
+                            }) || toast.error("Allow pop-ups to print.")
+                          }
+                        >
+                          Print / PDF
+                        </button>
                       </div>
                     </li>
                   ))}
                 </ul>
               )}
+            </TabsContent>
+            <TabsContent value="files" className="mt-3">
+              <AttachmentsPanel entity="lead" id={l.id} readOnly={!!l.archived_at} />
             </TabsContent>
             <TabsContent value="owners" className="mt-3">
               <ul className="space-y-2 text-sm">
@@ -712,6 +750,12 @@ function LeadDetail() {
             },
           )
         }
+      />
+      <SendMessageDialog
+        open={msgOpen}
+        onOpenChange={setMsgOpen}
+        lead={l}
+        ownerName={userName(l.owner_id)}
       />
     </>
   );

@@ -1,3 +1,5 @@
+import { EmailLink, PhoneLinks } from "@/components/crm/contact-links";
+import { AttachmentsPanel } from "@/components/crm/attachments-panel";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { AccessDenied } from "@/components/app-shell";
@@ -57,11 +59,15 @@ function Page() {
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Email</dt>
-              <dd className="break-all">{c.email ?? "—"}</dd>
+              <dd className="break-all">
+                <EmailLink email={c.email} />
+              </dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Phone</dt>
-              <dd>{c.phone ?? "—"}</dd>
+              <dd>
+                <PhoneLinks phone={c.phone} />
+              </dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Website</dt>
@@ -70,6 +76,9 @@ function Page() {
           </dl>
         </SectionCard>
         <div className="space-y-4 lg:col-span-2">
+          <SectionCard title="Files">
+            <AttachmentsPanel entity="client" id={c.id} />
+          </SectionCard>
           <SectionCard title="Handover">
             {(h?.projects ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">No project recorded yet.</p>

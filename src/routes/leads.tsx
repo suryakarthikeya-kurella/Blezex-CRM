@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Download, Plus, Search } from "lucide-react";
+import { Download, Plus, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import {
@@ -58,6 +58,8 @@ import {
 import { supabase } from "@/lib/supabase";
 import { date, downloadCsv, isOverdue, money } from "@/lib/format";
 import { can } from "@/lib/permissions";
+import { ImportLeadsDialog } from "@/components/crm/import-leads-dialog";
+import { SavedViews } from "@/components/crm/saved-views";
 import type { Lead } from "@/lib/db-types";
 
 export const Route = createFileRoute("/leads")({
@@ -89,6 +91,7 @@ function LeadsPage() {
   const [lostReason, setLostReason] = useState("");
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const leads = useLeads(f);
   const create = useCreateLead();
@@ -196,6 +199,9 @@ function LeadsPage() {
             <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting}>
               <Download className="size-4" /> {exporting ? "Exporting…" : "Export CSV"}
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
+              <Upload className="size-4" /> Import CSV
+            </Button>
             <Button size="sm" onClick={() => setCreating(true)}>
               <Plus className="size-4" /> New lead
             </Button>
@@ -227,6 +233,33 @@ function LeadsPage() {
                 onBlur={() => search !== (f.search ?? "") && set({ search })}
               />
             </form>
+            <SavedViews
+              scope="leads"
+              current={{
+                search: f.search ?? "",
+                stage: f.stage ?? "",
+                priority: f.priority ?? "",
+                owner: f.owner ?? "",
+                source: f.source ?? "",
+                archived: f.archived ?? false,
+                sort: f.sort ?? "created_at",
+                asc: f.asc ?? false,
+              }}
+              onApply={(v) => {
+                const s = v as Partial<LeadFilters>;
+                setSearch(s.search ?? "");
+                setF({
+                  page: 0,
+                  sort: s.sort ?? "created_at",
+                  asc: s.asc ?? false,
+                  ...Object.fromEntries(
+                    Object.entries(s).filter(
+                      ([k, x]) => x !== "" && x !== undefined && !["sort", "asc"].includes(k),
+                    ),
+                  ),
+                });
+              }}
+            />
             <SelectBox
               value={f.stage ?? ""}
               onChange={(v) => set({ stage: v })}
@@ -511,6 +544,7 @@ function LeadsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ImportLeadsDialog open={importing} onOpenChange={setImporting} />
     </>
   );
 }

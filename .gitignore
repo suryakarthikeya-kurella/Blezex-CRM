@@ -32,7 +32,10 @@ dist-ssr
 *.sw?
 
 # Environment & deploy artifacts
-.env
+.env.local
 .env.*
 !.env.example
 .netlify
+
+# Supabase CLI link cache
+supabase/.temp

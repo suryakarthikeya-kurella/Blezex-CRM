@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
+import { passwordIssue } from "@/lib/password";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,7 +53,8 @@ function ResetPassword() {
         className="w-full max-w-sm space-y-4"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (pw.length < 10) return setError("Use at least 10 characters.");
+          const issue = passwordIssue(pw);
+          if (issue) return setError(issue);
           if (pw !== pw2) return setError("Passwords don't match.");
           setBusy(true);
           const err = await updatePassword(pw);

@@ -7,6 +7,7 @@ import { ErrorBlock, LoadingBlock, PageHeader, SectionCard } from "@/components/
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { LeaveQuotaEditor, TemplatesEditor } from "@/components/crm/settings-extras";
 import { useConfig } from "@/lib/api";
 import { supabase, unwrap } from "@/lib/supabase";
 
@@ -240,6 +241,8 @@ function Page() {
         <Vocabulary title="Lead sources" table="lead_sources" rows={c.sources} col="name" />
         <Vocabulary title="Services catalogue" table="services" rows={c.services} col="name" />
         <Vocabulary title="Lost reasons" table="lost_reasons" rows={c.lostReasons} col="label" />
+        <LeaveQuotaEditor />
+        <TemplatesEditor />
       </div>
     </>
   );
