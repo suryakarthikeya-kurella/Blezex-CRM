@@ -27,6 +27,7 @@ export type FieldDef = {
   required?: boolean;
   full?: boolean;
   disabled?: boolean;
+  step?: string; // number inputs: "0.01" for money
 };
 
 export function RecordDialog({
@@ -113,6 +114,7 @@ export function RecordDialog({
                   <Input
                     id={id}
                     type={f.type ?? "text"}
+                    step={f.step}
                     required={f.required}
                     disabled={f.disabled}
                     value={values[f.name] ?? ""}

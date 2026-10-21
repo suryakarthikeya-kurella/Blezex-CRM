@@ -15,6 +15,8 @@
 | Clients / projects | ✔ write | read, team only | read, own converted | `can_access_client()`; writes admin-only |
 | Proposals | ✔ | ✔ team | ✔ own leads | follows lead access |
 | Invoices / payments / revenue | ✔ | ✘ | ✘ | admin-only policies; `report_revenue()` raises |
+| Finance: overview, client accounts, invoices & payments, adjustments, employee sales, payroll, expenses, financial reports (+ CSV) | ✔ | ✘ | ✘ | admin-only RLS on every table/view; `finance_*` RPCs raise 42501 for non-admins; `/finance/*` guarded in `permissions.ts` |
+| Finance: Services & pricing (prices, discounts) | ✔ read + write | ✔ read only | ✔ read only | `services` policies: select = any active user, insert/update/delete = admin |
 | Targets | set: ✔ | view team | view own | `user_targets` policies |
 | Daily reports | all | team | own (metrics derived by trigger) | policies + `daily_reports_before` |
 | Audit history (tab on the Attendance page, route `/audit-logs`) | all | team work entries | own work entries | `audit_select`; append-only triggers |

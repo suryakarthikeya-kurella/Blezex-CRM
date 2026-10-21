@@ -26,6 +26,14 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as TeamRouteImport } from './routes/team'
 import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
+import { Route as FinanceIndexRouteImport } from './routes/finance.index'
+import { Route as FinanceAccountsRouteImport } from './routes/finance.accounts'
+import { Route as FinanceExpensesRouteImport } from './routes/finance.expenses'
+import { Route as FinanceInvoicesRouteImport } from './routes/finance.invoices'
+import { Route as FinancePayrollRouteImport } from './routes/finance.payroll'
+import { Route as FinanceReportsRouteImport } from './routes/finance.reports'
+import { Route as FinanceSalesRouteImport } from './routes/finance.sales'
+import { Route as FinanceServicesRouteImport } from './routes/finance.services'
 import { Route as LeadsLeadIdRouteImport } from './routes/leads.$leadId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -113,6 +121,46 @@ const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
   path: '/$clientId',
   getParentRoute: () => ClientsRoute,
 } as any)
+const FinanceIndexRoute = FinanceIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => FinanceRoute,
+} as any)
+const FinanceAccountsRoute = FinanceAccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
+  getParentRoute: () => FinanceRoute,
+} as any)
+const FinanceExpensesRoute = FinanceExpensesRouteImport.update({
+  id: '/expenses',
+  path: '/expenses',
+  getParentRoute: () => FinanceRoute,
+} as any)
+const FinanceInvoicesRoute = FinanceInvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
+  getParentRoute: () => FinanceRoute,
+} as any)
+const FinancePayrollRoute = FinancePayrollRouteImport.update({
+  id: '/payroll',
+  path: '/payroll',
+  getParentRoute: () => FinanceRoute,
+} as any)
+const FinanceReportsRoute = FinanceReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => FinanceRoute,
+} as any)
+const FinanceSalesRoute = FinanceSalesRouteImport.update({
+  id: '/sales',
+  path: '/sales',
+  getParentRoute: () => FinanceRoute,
+} as any)
+const FinanceServicesRoute = FinanceServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => FinanceRoute,
+} as any)
 const LeadsLeadIdRoute = LeadsLeadIdRouteImport.update({
   id: '/$leadId',
   path: '/$leadId',
@@ -127,7 +175,7 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof CalendarRoute
   '/clients': typeof ClientsRouteWithChildren
   '/daily-reports': typeof DailyReportsRoute
-  '/finance': typeof FinanceRoute
+  '/finance': typeof FinanceRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/leads': typeof LeadsRouteWithChildren
   '/notifications': typeof NotificationsRoute
@@ -137,7 +185,15 @@ export interface FileRoutesByFullPath {
   '/tasks': typeof TasksRoute
   '/team': typeof TeamRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/finance/accounts': typeof FinanceAccountsRoute
+  '/finance/expenses': typeof FinanceExpensesRoute
+  '/finance/invoices': typeof FinanceInvoicesRoute
+  '/finance/payroll': typeof FinancePayrollRoute
+  '/finance/reports': typeof FinanceReportsRoute
+  '/finance/sales': typeof FinanceSalesRoute
+  '/finance/services': typeof FinanceServicesRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
+  '/finance/': typeof FinanceIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -147,7 +203,6 @@ export interface FileRoutesByTo {
   '/calendar': typeof CalendarRoute
   '/clients': typeof ClientsRouteWithChildren
   '/daily-reports': typeof DailyReportsRoute
-  '/finance': typeof FinanceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/leads': typeof LeadsRouteWithChildren
   '/notifications': typeof NotificationsRoute
@@ -157,7 +212,15 @@ export interface FileRoutesByTo {
   '/tasks': typeof TasksRoute
   '/team': typeof TeamRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/finance/accounts': typeof FinanceAccountsRoute
+  '/finance/expenses': typeof FinanceExpensesRoute
+  '/finance/invoices': typeof FinanceInvoicesRoute
+  '/finance/payroll': typeof FinancePayrollRoute
+  '/finance/reports': typeof FinanceReportsRoute
+  '/finance/sales': typeof FinanceSalesRoute
+  '/finance/services': typeof FinanceServicesRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
+  '/finance': typeof FinanceIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -168,7 +231,7 @@ export interface FileRoutesById {
   '/calendar': typeof CalendarRoute
   '/clients': typeof ClientsRouteWithChildren
   '/daily-reports': typeof DailyReportsRoute
-  '/finance': typeof FinanceRoute
+  '/finance': typeof FinanceRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/leads': typeof LeadsRouteWithChildren
   '/notifications': typeof NotificationsRoute
@@ -178,7 +241,15 @@ export interface FileRoutesById {
   '/tasks': typeof TasksRoute
   '/team': typeof TeamRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/finance/accounts': typeof FinanceAccountsRoute
+  '/finance/expenses': typeof FinanceExpensesRoute
+  '/finance/invoices': typeof FinanceInvoicesRoute
+  '/finance/payroll': typeof FinancePayrollRoute
+  '/finance/reports': typeof FinanceReportsRoute
+  '/finance/sales': typeof FinanceSalesRoute
+  '/finance/services': typeof FinanceServicesRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
+  '/finance/': typeof FinanceIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -200,7 +271,15 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/team'
     | '/clients/$clientId'
+    | '/finance/accounts'
+    | '/finance/expenses'
+    | '/finance/invoices'
+    | '/finance/payroll'
+    | '/finance/reports'
+    | '/finance/sales'
+    | '/finance/services'
     | '/leads/$leadId'
+    | '/finance/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -210,7 +289,6 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/clients'
     | '/daily-reports'
-    | '/finance'
     | '/forgot-password'
     | '/leads'
     | '/notifications'
@@ -220,7 +298,15 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/team'
     | '/clients/$clientId'
+    | '/finance/accounts'
+    | '/finance/expenses'
+    | '/finance/invoices'
+    | '/finance/payroll'
+    | '/finance/reports'
+    | '/finance/sales'
+    | '/finance/services'
     | '/leads/$leadId'
+    | '/finance'
   id:
     | '__root__'
     | '/'
@@ -240,7 +326,15 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/team'
     | '/clients/$clientId'
+    | '/finance/accounts'
+    | '/finance/expenses'
+    | '/finance/invoices'
+    | '/finance/payroll'
+    | '/finance/reports'
+    | '/finance/sales'
+    | '/finance/services'
     | '/leads/$leadId'
+    | '/finance/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -251,7 +345,7 @@ export interface RootRouteChildren {
   CalendarRoute: typeof CalendarRoute
   ClientsRoute: typeof ClientsRouteWithChildren
   DailyReportsRoute: typeof DailyReportsRoute
-  FinanceRoute: typeof FinanceRoute
+  FinanceRoute: typeof FinanceRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LeadsRoute: typeof LeadsRouteWithChildren
   NotificationsRoute: typeof NotificationsRoute
@@ -383,6 +477,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsClientIdRouteImport
       parentRoute: typeof ClientsRoute
     }
+    '/finance/': {
+      id: '/finance/'
+      path: '/'
+      fullPath: '/finance/'
+      preLoaderRoute: typeof FinanceIndexRouteImport
+      parentRoute: typeof FinanceRoute
+    }
+    '/finance/accounts': {
+      id: '/finance/accounts'
+      path: '/accounts'
+      fullPath: '/finance/accounts'
+      preLoaderRoute: typeof FinanceAccountsRouteImport
+      parentRoute: typeof FinanceRoute
+    }
+    '/finance/expenses': {
+      id: '/finance/expenses'
+      path: '/expenses'
+      fullPath: '/finance/expenses'
+      preLoaderRoute: typeof FinanceExpensesRouteImport
+      parentRoute: typeof FinanceRoute
+    }
+    '/finance/invoices': {
+      id: '/finance/invoices'
+      path: '/invoices'
+      fullPath: '/finance/invoices'
+      preLoaderRoute: typeof FinanceInvoicesRouteImport
+      parentRoute: typeof FinanceRoute
+    }
+    '/finance/payroll': {
+      id: '/finance/payroll'
+      path: '/payroll'
+      fullPath: '/finance/payroll'
+      preLoaderRoute: typeof FinancePayrollRouteImport
+      parentRoute: typeof FinanceRoute
+    }
+    '/finance/reports': {
+      id: '/finance/reports'
+      path: '/reports'
+      fullPath: '/finance/reports'
+      preLoaderRoute: typeof FinanceReportsRouteImport
+      parentRoute: typeof FinanceRoute
+    }
+    '/finance/sales': {
+      id: '/finance/sales'
+      path: '/sales'
+      fullPath: '/finance/sales'
+      preLoaderRoute: typeof FinanceSalesRouteImport
+      parentRoute: typeof FinanceRoute
+    }
+    '/finance/services': {
+      id: '/finance/services'
+      path: '/services'
+      fullPath: '/finance/services'
+      preLoaderRoute: typeof FinanceServicesRouteImport
+      parentRoute: typeof FinanceRoute
+    }
     '/leads/$leadId': {
       id: '/leads/$leadId'
       path: '/$leadId'
@@ -404,6 +554,31 @@ const ClientsRouteChildren: ClientsRouteChildren = {
 const ClientsRouteWithChildren =
   ClientsRoute._addFileChildren(ClientsRouteChildren)
 
+interface FinanceRouteChildren {
+  FinanceAccountsRoute: typeof FinanceAccountsRoute
+  FinanceExpensesRoute: typeof FinanceExpensesRoute
+  FinanceInvoicesRoute: typeof FinanceInvoicesRoute
+  FinancePayrollRoute: typeof FinancePayrollRoute
+  FinanceReportsRoute: typeof FinanceReportsRoute
+  FinanceSalesRoute: typeof FinanceSalesRoute
+  FinanceServicesRoute: typeof FinanceServicesRoute
+  FinanceIndexRoute: typeof FinanceIndexRoute
+}
+
+const FinanceRouteChildren: FinanceRouteChildren = {
+  FinanceAccountsRoute: FinanceAccountsRoute,
+  FinanceExpensesRoute: FinanceExpensesRoute,
+  FinanceInvoicesRoute: FinanceInvoicesRoute,
+  FinancePayrollRoute: FinancePayrollRoute,
+  FinanceReportsRoute: FinanceReportsRoute,
+  FinanceSalesRoute: FinanceSalesRoute,
+  FinanceServicesRoute: FinanceServicesRoute,
+  FinanceIndexRoute: FinanceIndexRoute,
+}
+
+const FinanceRouteWithChildren =
+  FinanceRoute._addFileChildren(FinanceRouteChildren)
+
 interface LeadsRouteChildren {
   LeadsLeadIdRoute: typeof LeadsLeadIdRoute
 }
@@ -422,7 +597,7 @@ const rootRouteChildren: RootRouteChildren = {
   CalendarRoute: CalendarRoute,
   ClientsRoute: ClientsRouteWithChildren,
   DailyReportsRoute: DailyReportsRoute,
-  FinanceRoute: FinanceRoute,
+  FinanceRoute: FinanceRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LeadsRoute: LeadsRouteWithChildren,
   NotificationsRoute: NotificationsRoute,
