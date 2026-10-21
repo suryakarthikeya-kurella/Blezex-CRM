@@ -20,6 +20,9 @@ export type Capability =
   | "targets.manage"
   | "settings.manage"
   | "finance.manage"
+  | "services.view"
+  | "services.manage"
+  | "payroll.view"
   | "audit.view"
   | "team.view"
   | "approvals.decide"
@@ -35,6 +38,9 @@ const MATRIX: Record<Capability, readonly Role[]> = {
   "targets.manage": ["admin"],
   "settings.manage": ["admin"],
   "finance.manage": ["admin"],
+  "services.view": ["admin", "mentor", "bds_employee"], // price list for client conversations
+  "services.manage": ["admin"],
+  "payroll.view": ["admin"],
   "audit.view": ["admin", "mentor", "bds_employee"], // scope narrows by role in RLS
   "team.view": ["admin", "mentor"],
   "approvals.decide": ["admin", "mentor"],
@@ -73,7 +79,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   { to: "/team", label: "Team", icon: "team", roles: ["admin", "mentor"] },
   { to: "/reports", label: "Reports", icon: "chart", roles: ["admin", "mentor", "bds_employee"] },
-  { to: "/finance", label: "Invoices & payments", icon: "finance", roles: ["admin"] },
+  { to: "/finance", label: "Finance", icon: "finance", roles: ["admin"] },
+  {
+    to: "/finance/services",
+    label: "Services & pricing",
+    icon: "finance",
+    roles: ["mentor", "bds_employee"], // admins reach it from the Finance tabs
+  },
   {
     to: "/approvals",
     label: "Approvals",
@@ -93,9 +105,34 @@ export function navFor(role: Role | undefined | null): NavItem[] {
   return NAV_ITEMS.filter((n) => !!role && n.roles.includes(role));
 }
 
+/** The eight approved Finance sections. Only Services & Pricing is open to mentors and employees. */
+export const FINANCE_SECTIONS: readonly { to: string; label: string; roles: readonly Role[] }[] = [
+  { to: "/finance", label: "Overview", roles: ["admin"] },
+  {
+    to: "/finance/services",
+    label: "Services & pricing",
+    roles: ["admin", "mentor", "bds_employee"],
+  },
+  { to: "/finance/accounts", label: "Client accounts", roles: ["admin"] },
+  { to: "/finance/invoices", label: "Invoices & payments", roles: ["admin"] },
+  { to: "/finance/sales", label: "Employee sales", roles: ["admin"] },
+  { to: "/finance/payroll", label: "Salaries & payroll", roles: ["admin"] },
+  { to: "/finance/expenses", label: "Company expenses", roles: ["admin"] },
+  { to: "/finance/reports", label: "Financial reports", roles: ["admin"] },
+];
+
+export function financeSectionsFor(role: Role | undefined | null) {
+  return FINANCE_SECTIONS.filter((s) => !!role && s.roles.includes(role));
+}
+
 export function routeAllowed(role: Role | undefined | null, path: string): boolean {
-  const item = [...NAV_ITEMS]
+  // Finance sections are the source of truth for /finance/*; a sidebar entry must not shadow them.
+  const rules: { to: string; roles: readonly Role[] }[] = [
+    ...FINANCE_SECTIONS,
+    ...NAV_ITEMS.filter((n) => !FINANCE_SECTIONS.some((s) => s.to === n.to)),
+  ];
+  const rule = rules
     .sort((a, b) => b.to.length - a.to.length)
-    .find((n) => (n.to === "/" ? path === "/" : path.startsWith(n.to)));
-  return item ? !!role && item.roles.includes(role) : !!role;
+    .find((n) => (n.to === "/" ? path === "/" : path === n.to || path.startsWith(`${n.to}/`)));
+  return rule ? !!role && rule.roles.includes(role) : !!role;
 }

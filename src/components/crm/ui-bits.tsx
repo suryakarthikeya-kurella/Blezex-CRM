@@ -15,6 +15,7 @@ export const statusTone = (v: string): "info" | "success" | "warning" | "danger"
     case "cancelled":
     case "churned":
     case "failed":
+    case "overdue":
       return "danger";
     case "negotiation":
     case "proposal_sent":
@@ -24,6 +25,7 @@ export const statusTone = (v: string): "info" | "success" | "warning" | "danger"
     case "renewal_due":
     case "in_progress":
     case "pending":
+    case "unpaid":
     case "paused":
     case "sent":
       return "warning";
